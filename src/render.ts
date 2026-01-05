@@ -5,6 +5,9 @@ import type {
   SymbolEntry,
   DetailLevel,
   SymbolKind,
+  ReferenceKind,
+  ReferenceList,
+  ReferenceItem,
 } from "./types.js";
 
 const GROUP_ORDER: SymbolKind[] = [
@@ -15,6 +18,16 @@ const GROUP_ORDER: SymbolKind[] = [
   "function",
   "variable",
 ];
+
+const STRUCTURAL_REF_KINDS = new Set<ReferenceKind>([
+  "import",
+  "reexport",
+  "call",
+  "instantiate",
+  "type",
+  "extends",
+  "implements",
+]);
 
 function organizeSymbols(symbols: SymbolEntry[]): SymbolEntry[] {
   const topLevel: SymbolEntry[] = [];
@@ -113,6 +126,13 @@ function renderSymbol(
     }
   }
 
+  if (opts.includeRefs) {
+    const refLines = renderReferenceSections(sym, level, opts, indent);
+    if (refLines.length > 0) {
+      lines.push(...refLines);
+    }
+  }
+
   if (sym.children && sym.children.length > 0) {
     if (level !== "minimal" && level !== "outline") {
       for (const child of sym.children) {
@@ -122,6 +142,138 @@ function renderSymbol(
   }
 
   return lines;
+}
+
+function renderReferenceSections(
+  sym: SymbolEntry,
+  level: DetailLevel,
+  opts: SourceMapOptions,
+  indent: string,
+): string[] {
+  if (level === "minimal" || level === "outline") return [];
+
+  const direction = opts.refsDirection ?? "in";
+  const showOutgoing = direction === "out" || (direction === "both" && level === "full");
+  const showIncoming = direction === "in" || direction === "both";
+
+  const filterKinds =
+    opts.refsMode === "full" && level !== "full" ? STRUCTURAL_REF_KINDS : null;
+
+  const lines: string[] = [];
+
+  if (showIncoming && sym.incomingRefs) {
+    lines.push(
+      ...renderReferenceBlock(
+        "refs in",
+        sym.incomingRefs,
+        filterKinds,
+        level,
+        indent,
+        "in",
+      ),
+    );
+  }
+
+  if (showOutgoing && sym.outgoingRefs) {
+    lines.push(
+      ...renderReferenceBlock(
+        "refs out",
+        sym.outgoingRefs,
+        filterKinds,
+        level,
+        indent,
+        "out",
+      ),
+    );
+  }
+
+  return lines;
+}
+
+function renderReferenceBlock(
+  label: string,
+  refs: ReferenceList,
+  filterKinds: Set<ReferenceKind> | null,
+  level: DetailLevel,
+  indent: string,
+  direction: "in" | "out",
+): string[] {
+  const filtered = filterKinds ? filterReferenceList(refs, filterKinds) : refs;
+  if (filtered.total === 0) return [];
+
+  const lines: string[] = [];
+  const kindSummary = formatReferenceKinds(filtered.byKind);
+  let header = `${indent}  ${label}: ${filtered.total}`;
+  if (filtered.sampled < filtered.total) {
+    header += ` (sampled ${filtered.sampled})`;
+  }
+  if (kindSummary) {
+    header += ` [${kindSummary}]`;
+  }
+  lines.push(header);
+
+  if (level === "compact") return lines;
+
+  const maxItems = level === "full" ? filtered.items.length : 5;
+  const items = filtered.items.slice(0, maxItems);
+  const itemIndent = `${indent}    `;
+  for (const item of items) {
+    lines.push(`${itemIndent}- ${formatReferenceItem(item, direction)}`);
+  }
+
+  if (filtered.items.length > items.length) {
+    lines.push(`${itemIndent}... (${filtered.items.length - items.length} more)`);
+  }
+
+  return lines;
+}
+
+function filterReferenceList(
+  refs: ReferenceList,
+  allowed: Set<ReferenceKind>,
+): ReferenceList {
+  const byKind: Partial<Record<ReferenceKind, number>> = {};
+  let total = 0;
+  for (const kind of Object.keys(refs.byKind) as ReferenceKind[]) {
+    if (!allowed.has(kind)) continue;
+    const count = refs.byKind[kind] ?? 0;
+    if (count > 0) {
+      byKind[kind] = count;
+      total += count;
+    }
+  }
+
+  const items = refs.items.filter((item) => allowed.has(item.refKind));
+  const sampled = Math.min(refs.sampled, total);
+  return {
+    total,
+    sampled,
+    byKind,
+    items,
+  };
+}
+
+function formatReferenceKinds(
+  byKind: Partial<Record<ReferenceKind, number>>,
+): string {
+  const parts: string[] = [];
+  for (const [kind, count] of Object.entries(byKind).sort()) {
+    if (!count) continue;
+    parts.push(`${kind}: ${count}`);
+  }
+  return parts.join(", ");
+}
+
+function formatReferenceItem(item: ReferenceItem, direction: "in" | "out"): string {
+  const symbolLabel = item.symbolParent
+    ? `${item.symbolParent}.${item.symbolName}`
+    : item.symbolName;
+  const location = `${item.refPath}:${item.refLine}`;
+  if (direction === "in") {
+    return `${location}: ${item.refKind} ${symbolLabel}`;
+  }
+  const target = item.symbolPath ?? "external";
+  return `${location}: ${item.refKind} ${symbolLabel} -> ${target}`;
 }
 
 export function renderFileEntry(
@@ -251,6 +403,42 @@ export function renderJson(result: SourceMapResult): string {
           parent_name: s.parentName ?? null,
           annotation: s.annotation ?? null,
           comment: s.comment ?? null,
+          incoming_refs: s.incomingRefs
+            ? {
+                total: s.incomingRefs.total,
+                sampled: s.incomingRefs.sampled,
+                by_kind: s.incomingRefs.byKind,
+                items: s.incomingRefs.items.map((item) => ({
+                  ref_path: item.refPath,
+                  ref_line: item.refLine,
+                  ref_col: item.refCol ?? null,
+                  symbol_path: item.symbolPath,
+                  symbol_name: item.symbolName,
+                  symbol_kind: item.symbolKind,
+                  symbol_parent: item.symbolParent ?? null,
+                  ref_kind: item.refKind,
+                  module_specifier: item.moduleSpecifier ?? null,
+                })),
+              }
+            : null,
+          outgoing_refs: s.outgoingRefs
+            ? {
+                total: s.outgoingRefs.total,
+                sampled: s.outgoingRefs.sampled,
+                by_kind: s.outgoingRefs.byKind,
+                items: s.outgoingRefs.items.map((item) => ({
+                  ref_path: item.refPath,
+                  ref_line: item.refLine,
+                  ref_col: item.refCol ?? null,
+                  symbol_path: item.symbolPath,
+                  symbol_name: item.symbolName,
+                  symbol_kind: item.symbolKind,
+                  symbol_parent: item.symbolParent ?? null,
+                  ref_kind: item.refKind,
+                  module_specifier: item.moduleSpecifier ?? null,
+                })),
+              }
+            : null,
         })),
         annotation: f.annotation ?? null,
         headings: f.headings ?? null,

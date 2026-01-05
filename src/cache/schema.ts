@@ -1,6 +1,6 @@
 import Database from "better-sqlite3";
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 type DB = Database.Database;
 
 const MIGRATION_1 = `
@@ -129,6 +129,70 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_resolved_imports_stmt
   ON resolved_imports(importer_path, kind, source, span_start, span_end);
 `;
 
+const MIGRATION_3 = `
+CREATE TABLE IF NOT EXISTS "references" (
+  id INTEGER PRIMARY KEY,
+  from_path TEXT NOT NULL,
+  from_symbol_id INTEGER,
+  from_symbol_name TEXT,
+  from_symbol_kind TEXT,
+  from_symbol_parent TEXT,
+  from_line INTEGER NOT NULL,
+  from_col INTEGER,
+  from_len INTEGER,
+  to_path TEXT,
+  to_symbol_id INTEGER,
+  to_symbol_name TEXT NOT NULL,
+  to_symbol_kind TEXT,
+  to_symbol_parent TEXT,
+  ref_kind TEXT NOT NULL,
+  is_definition INTEGER NOT NULL DEFAULT 0,
+  module_specifier TEXT,
+  FOREIGN KEY (from_path) REFERENCES files(path) ON DELETE CASCADE,
+  FOREIGN KEY (to_path) REFERENCES files(path) ON DELETE CASCADE,
+  FOREIGN KEY (from_symbol_id) REFERENCES symbols(id) ON DELETE CASCADE,
+  FOREIGN KEY (to_symbol_id) REFERENCES symbols(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_refs_from_path ON "references"(from_path);
+CREATE INDEX IF NOT EXISTS idx_refs_to_path ON "references"(to_path);
+CREATE INDEX IF NOT EXISTS idx_refs_kind ON "references"(ref_kind);
+CREATE INDEX IF NOT EXISTS idx_refs_from_symbol_id ON "references"(from_symbol_id);
+CREATE INDEX IF NOT EXISTS idx_refs_to_symbol_id ON "references"(to_symbol_id);
+CREATE INDEX IF NOT EXISTS idx_refs_to_fallback
+  ON "references"(to_path, to_symbol_name, to_symbol_kind, to_symbol_parent);
+CREATE INDEX IF NOT EXISTS idx_refs_from_fallback
+  ON "references"(from_path, from_symbol_name, from_symbol_kind, from_symbol_parent);
+CREATE INDEX IF NOT EXISTS idx_refs_to_file_kind ON "references"(to_path, ref_kind);
+
+CREATE TABLE IF NOT EXISTS reference_summaries (
+  to_symbol_id INTEGER,
+  to_path TEXT,
+  to_symbol_name TEXT NOT NULL,
+  to_symbol_kind TEXT,
+  to_symbol_parent TEXT,
+  ref_kind TEXT NOT NULL,
+  total_count INTEGER NOT NULL,
+  sampled_count INTEGER NOT NULL,
+  PRIMARY KEY (to_symbol_id, ref_kind),
+  FOREIGN KEY (to_symbol_id) REFERENCES symbols(id) ON DELETE CASCADE,
+  FOREIGN KEY (to_path) REFERENCES files(path) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_ref_summaries_to_symbol
+  ON reference_summaries(to_symbol_id);
+CREATE INDEX IF NOT EXISTS idx_ref_summaries_fallback
+  ON reference_summaries(to_path, to_symbol_name, to_symbol_kind, to_symbol_parent);
+
+CREATE TABLE IF NOT EXISTS ref_state (
+  path TEXT PRIMARY KEY,
+  refs_extracted_at TEXT,
+  refs_hash TEXT,
+  project_hash TEXT,
+  FOREIGN KEY (path) REFERENCES files(path) ON DELETE CASCADE
+);
+`;
+
 export function migrate(db: DB): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -156,6 +220,12 @@ export function migrate(db: DB): void {
       db.prepare(
         "INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)",
       ).run(2, new Date().toISOString());
+    }
+    if (currentVersion < 3) {
+      db.exec(MIGRATION_3);
+      db.prepare(
+        "INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)",
+      ).run(3, new Date().toISOString());
     }
   });
 

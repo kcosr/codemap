@@ -33,6 +33,7 @@ import {
   type CodeBlockRow,
   type CachedFile,
 } from "./cache/db.js";
+import { updateReferences } from "./refs/update.js";
 import {
   createResolverContext,
   resolveImports,
@@ -46,6 +47,7 @@ import {
   type FileTouch,
 } from "./cache/changes.js";
 import { buildSymbolAnnotationKey } from "./cache/annotations.js";
+import { STRUCTURAL_REF_KINDS } from "./cache/references.js";
 
 const DEFAULT_OPTIONS: Partial<SourceMapOptions> = {
   includeComments: true,
@@ -58,6 +60,11 @@ const DEFAULT_OPTIONS: Partial<SourceMapOptions> = {
   useCache: true,
   forceRefresh: false,
   useTsconfig: true,
+  includeRefs: false,
+  refsDirection: "in",
+  refsMode: undefined,
+  maxRefs: undefined,
+  forceRefs: false,
 };
 
 const DETAIL_LEVELS: DetailLevel[] = [
@@ -269,6 +276,12 @@ function buildEntriesFromCache(
     const fileAnnotation = db.getFileAnnotation(relPath) ?? undefined;
     const symbolAnnotations = db.getSymbolAnnotationMap(relPath);
 
+    const refsMode = opts.refsMode ?? (opts.includeRefs ? "structural" : undefined);
+    const refKinds =
+      refsMode === "full" ? undefined : STRUCTURAL_REF_KINDS;
+    const refsDirection = opts.refsDirection ?? "in";
+    const maxRefs = opts.maxRefs;
+
     const symbols = db.getSymbols(relPath).map((sym) => {
       const key = buildSymbolAnnotationKey(
         sym.name,
@@ -287,7 +300,8 @@ function buildEntriesFromCache(
         annotation = symbolAnnotations.get(fallbackKey);
       }
       const signature = sym.signature ?? sym.name;
-      return {
+      const entry: SymbolEntry = {
+        id: sym.id,
         name: sym.name,
         kind: sym.kind,
         signature,
@@ -301,7 +315,36 @@ function buildEntriesFromCache(
         parentName: sym.parent_name ?? undefined,
         comment: sym.jsdoc ?? undefined,
         annotation,
-      } as SymbolEntry;
+      };
+
+      if (opts.includeRefs) {
+        const refKey = sym.id
+          ? { symbolId: sym.id }
+          : {
+              path: relPath,
+              name: sym.name,
+              kind: sym.kind,
+              parent: sym.parent_name ?? null,
+            };
+        if (refsDirection === "in" || refsDirection === "both") {
+          entry.incomingRefs = db.getReferenceList(
+            "in",
+            refKey,
+            refKinds,
+            maxRefs,
+          );
+        }
+        if (refsDirection === "out" || refsDirection === "both") {
+          entry.outgoingRefs = db.getReferenceList(
+            "out",
+            refKey,
+            refKinds,
+            maxRefs,
+          );
+        }
+      }
+
+      return entry;
     });
 
     const filteredSymbols = opts.exportedOnly
@@ -511,8 +554,17 @@ function generateSourceMapNoCache(opts: SourceMapOptions): SourceMapResult {
 
 export function refreshCache(
   options: SourceMapOptions,
-): { db: CacheDB; filePaths: string[]; opts: SourceMapOptions } {
+): {
+  db: CacheDB;
+  filePaths: string[];
+  opts: SourceMapOptions;
+  changes: FileChange[];
+  touches: FileTouch[];
+} {
   const opts = { ...DEFAULT_OPTIONS, ...options } as SourceMapOptions;
+  if (!opts.refsMode && opts.includeRefs) {
+    opts.refsMode = "structural";
+  }
   const { repoRoot } = opts;
   const { patterns, ignore } = normalizeScopePatterns(opts.patterns, opts.ignore);
 
@@ -558,13 +610,28 @@ export function refreshCache(
 
   updateCache(db, discovered, changes, touches, resolverContext);
 
-  return { db, filePaths, opts };
+  if (opts.refsMode) {
+    updateReferences(db, {
+      repoRoot,
+      filePaths,
+      changes,
+      refsMode: opts.refsMode,
+      forceRefs: opts.forceRefs,
+      tsconfigPath: opts.tsconfigPath,
+      useTsconfig: opts.useTsconfig,
+    });
+  }
+
+  return { db, filePaths, opts, changes, touches };
 }
 
 export function generateSourceMap(options: SourceMapOptions): SourceMapResult {
   const opts = { ...DEFAULT_OPTIONS, ...options } as SourceMapOptions;
 
   if (opts.useCache === false) {
+    if (opts.includeRefs) {
+      opts.includeRefs = false;
+    }
     return generateSourceMapNoCache(opts);
   }
 

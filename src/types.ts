@@ -18,7 +18,38 @@ export type SymbolKind =
   | "getter"
   | "setter";
 
+export type ReferenceKind =
+  | "import"
+  | "reexport"
+  | "call"
+  | "instantiate"
+  | "type"
+  | "extends"
+  | "implements"
+  | "read"
+  | "write";
+
+export type ReferenceItem = {
+  refPath: string;
+  refLine: number;
+  refCol?: number | null;
+  symbolPath: string | null;
+  symbolName: string;
+  symbolKind: string | null;
+  symbolParent: string | null;
+  refKind: ReferenceKind;
+  moduleSpecifier?: string | null;
+};
+
+export type ReferenceList = {
+  total: number;
+  sampled: number;
+  byKind: Partial<Record<ReferenceKind, number>>;
+  items: ReferenceItem[];
+};
+
 export type SymbolEntry = {
+  id?: number;
   name: string;
   kind: SymbolKind;
   signature: string;
@@ -32,6 +63,8 @@ export type SymbolEntry = {
   parentName?: string;
   comment?: string;
   annotation?: string;
+  incomingRefs?: ReferenceList;
+  outgoingRefs?: ReferenceList;
   children?: SymbolEntry[];
 };
 
@@ -142,6 +175,13 @@ export type SourceMapOptions = {
   forceRefresh?: boolean;
   tsconfigPath?: string;
   useTsconfig?: boolean;
+
+  // References
+  includeRefs?: boolean;
+  refsMode?: "structural" | "full";
+  refsDirection?: "in" | "out" | "both";
+  maxRefs?: number;
+  forceRefs?: boolean;
 
   // Output
   output: "text" | "json";
