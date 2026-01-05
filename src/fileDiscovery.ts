@@ -49,7 +49,7 @@ function discoverAllFiles(repoRoot: string): string[] {
 
 function walkDirectory(dir: string, root: string): string[] {
   const results: string[] = [];
-  const skip = new Set([".git", "node_modules", "dist", "build"]);
+  const skip = new Set([".git", ".codemap", "node_modules", "dist", "build"]);
 
   for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
     if (skip.has(ent.name)) continue;

@@ -1,0 +1,130 @@
+import Database from "better-sqlite3";
+
+export const SCHEMA_VERSION = 1;
+type DB = Database.Database;
+
+const MIGRATION_1 = `
+CREATE TABLE IF NOT EXISTS meta (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS files (
+  path TEXT PRIMARY KEY,
+  mtime INTEGER NOT NULL,
+  size INTEGER NOT NULL,
+  hash TEXT NOT NULL,
+  language TEXT NOT NULL CHECK(language IN ('typescript','javascript','markdown','other')),
+  line_count INTEGER NOT NULL,
+  extractor_version TEXT NOT NULL DEFAULT '1',
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS symbols (
+  id INTEGER PRIMARY KEY,
+  path TEXT NOT NULL,
+  name TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK(kind IN (
+    'function','class','interface','type','variable','enum','enum_member',
+    'method','property','constructor','getter','setter'
+  )),
+  signature TEXT,
+  start_line INTEGER NOT NULL,
+  end_line INTEGER NOT NULL,
+  exported INTEGER NOT NULL DEFAULT 0,
+  is_default INTEGER NOT NULL DEFAULT 0,
+  is_async INTEGER NOT NULL DEFAULT 0,
+  is_static INTEGER NOT NULL DEFAULT 0,
+  is_abstract INTEGER NOT NULL DEFAULT 0,
+  parent_name TEXT,
+  jsdoc TEXT,
+  FOREIGN KEY (path) REFERENCES files(path) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS imports (
+  id INTEGER PRIMARY KEY,
+  path TEXT NOT NULL,
+  source TEXT NOT NULL,
+  FOREIGN KEY (path) REFERENCES files(path) ON DELETE CASCADE,
+  UNIQUE(path, source)
+);
+
+CREATE TABLE IF NOT EXISTS headings (
+  id INTEGER PRIMARY KEY,
+  path TEXT NOT NULL,
+  level INTEGER NOT NULL CHECK(level BETWEEN 1 AND 6),
+  text TEXT NOT NULL,
+  line INTEGER NOT NULL,
+  FOREIGN KEY (path) REFERENCES files(path) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS code_blocks (
+  id INTEGER PRIMARY KEY,
+  path TEXT NOT NULL,
+  language TEXT,
+  start_line INTEGER NOT NULL,
+  end_line INTEGER NOT NULL,
+  FOREIGN KEY (path) REFERENCES files(path) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS file_annotations (
+  path TEXT PRIMARY KEY,
+  note TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS symbol_annotations (
+  id INTEGER PRIMARY KEY,
+  path TEXT NOT NULL,
+  symbol_name TEXT NOT NULL,
+  symbol_kind TEXT NOT NULL,
+  parent_name TEXT,
+  signature TEXT NOT NULL DEFAULT '',
+  note TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(path, symbol_name, symbol_kind, parent_name, signature)
+);
+
+CREATE INDEX IF NOT EXISTS idx_symbols_path ON symbols(path);
+CREATE INDEX IF NOT EXISTS idx_symbols_name ON symbols(name);
+CREATE INDEX IF NOT EXISTS idx_symbols_kind ON symbols(kind);
+CREATE INDEX IF NOT EXISTS idx_symbols_parent ON symbols(parent_name);
+CREATE INDEX IF NOT EXISTS idx_symbols_lookup ON symbols(path, parent_name, kind, name);
+
+CREATE INDEX IF NOT EXISTS idx_imports_path ON imports(path);
+CREATE INDEX IF NOT EXISTS idx_imports_source ON imports(source);
+CREATE INDEX IF NOT EXISTS idx_headings_path ON headings(path);
+CREATE INDEX IF NOT EXISTS idx_code_blocks_path ON code_blocks(path);
+
+CREATE INDEX IF NOT EXISTS idx_symbol_annotations_path ON symbol_annotations(path);
+CREATE INDEX IF NOT EXISTS idx_file_annotations_path ON file_annotations(path);
+`;
+
+export function migrate(db: DB): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+      version INTEGER PRIMARY KEY,
+      applied_at TEXT NOT NULL
+    );
+  `);
+
+  const row = db
+    .prepare("SELECT MAX(version) as version FROM schema_migrations")
+    .get() as { version: number | null } | undefined;
+  const currentVersion = row?.version ?? 0;
+
+  if (currentVersion >= SCHEMA_VERSION) return;
+
+  const apply = db.transaction(() => {
+    if (currentVersion < 1) {
+      db.exec(MIGRATION_1);
+      db.prepare(
+        "INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)",
+      ).run(1, new Date().toISOString());
+    }
+  });
+
+  apply();
+}

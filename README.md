@@ -1,6 +1,12 @@
 # Codemap
 
-Codemap generates a compact, token-aware map of a codebase: files, symbols, and markdown structure.
+Codemap generates a compact, token-aware map of a codebase: files, symbols, and markdown structure. Designed for feeding context to LLMs and coding agents.
+
+## Supported Languages
+
+- **TypeScript/JavaScript**: Full symbol extraction (functions, classes, interfaces, types, variables, methods, etc.)
+- **Markdown**: Headings and code block ranges
+- **Other files**: Listed with line counts (no symbol extraction)
 
 ## Install
 
@@ -16,50 +22,393 @@ npm run build:bun
 ./dist/codemap --help
 ```
 
-## Usage
+## Quick Start
 
 ```bash
-# Run on the current directory
-node dist/cli.js
+# Map the current directory
+codemap
 
-# JSON output with a token budget
-node dist/cli.js --output json --budget 2000
+# Map specific files
+codemap "src/**/*.ts"
 
-# Limit to specific files
-node dist/cli.js "src/**/*.ts" --ignore "**/*.test.ts"
+# Fit output to a token budget (auto-reduces detail)
+codemap --budget 4000
 
-# Run the local package from any folder (after build)
-npx /path/to/repo --help
+# JSON output for programmatic use
+codemap -o json
+```
 
-# Optional: link a global-style command
-npm link
-codemap --help
+## Using with AI Agents
+
+Codemap output is designed to give agents a quick overview of your codebase structure.
+
+See [examples/chat-answer-no-file-reads.txt](examples/chat-answer-no-file-reads.txt) for a real session where an agent answers questions about the codebase using only the codemap output (no file reads needed).
+
+### Building a Prompt File
+
+The safest approach is to build a prompt file, then pass it to your agent:
+
+```bash
+# Create prompt with context + instructions
+echo "# Codebase Context" > prompt.md
+echo "" >> prompt.md
+codemap --budget 6000 >> prompt.md
+echo "" >> prompt.md
+echo "# Task" >> prompt.md
+echo "Refactor the auth module to use JWT tokens." >> prompt.md
+
+# Pass to Codex
+codex "$(cat prompt.md)"
+
+# Or Claude Code
+cat prompt.md | claude
+
+# Or copy to clipboard (macOS)
+cat prompt.md | pbcopy
+```
+
+### Quick One-Liner (Small Repos)
+
+For small outputs without special characters:
+
+```bash
+codemap "src/auth.ts" > /tmp/ctx.txt && codex "$(cat /tmp/ctx.txt) - add rate limiting"
+```
+
+### Token Budget and Detail Levels
+
+Use `--budget` to auto-fit output to a token limit. Codemap progressively reduces detail for the largest files until the output fits.
+
+```bash
+# Fit to 8K tokens
+codemap --budget 8000
+
+# Tighter budget with less metadata
+codemap --budget 2000 --no-comments --no-imports
+```
+
+**Detail levels** (applied per-file, largest files reduced first):
+
+| Level | Includes |
+|-------|----------|
+| `full` | Full signatures, JSDoc comments, nested members |
+| `standard` | Full signatures, truncated comments (160 chars) |
+| `compact` | Full signatures, no comments |
+| `minimal` | Names only (no signatures/types), no comments |
+| `outline` | File path and line range only |
+
+**Example progression** for a file as budget shrinks:
+
+```
+# full - complete signatures and types
+src/auth.ts [1-200]
+  function:
+    15-45: validateToken(token: string, options?: ValidateOptions): Promise<TokenPayload | null> [exported]
+      /** Validates a JWT token and returns the payload if valid, null if expired or invalid. */
+
+# minimal - just names
+src/auth.ts [1-200]
+  function:
+    15-45: validateToken [exported]
+
+# outline - file only
+src/auth.ts [1-200]
+```
+
+The algorithm reduces the largest file first, then the next largest, cycling through until the budget is met or all files are at `outline` level.
+
+## CLI Reference
+
+```bash
+codemap [patterns...] [options]
+
+Patterns:
+  Glob patterns to include (e.g., "src/**/*.ts" "lib/*.js")
+
+Options:
+  -C, --dir              Target directory (default: cwd)
+  -o, --output           Output format: text | json (default: text)
+  --budget               Token budget (auto-reduces detail to fit)
+  --ignore               Ignore patterns (repeatable)
+  --exported-only        Only include exported symbols
+  --no-comments          Exclude JSDoc comments
+  --no-imports           Exclude import lists
+  --no-headings          Exclude markdown headings
+  --no-code-blocks       Exclude markdown code block ranges
+  --no-stats             Exclude project statistics header
+  --no-cache             Force full re-extraction (ignore cache)
+  --cache-stats          Show cache statistics
+  --prune-annotations    Remove orphaned annotations
+```
+
+## Caching
+
+Codemap maintains a persistent cache at `.codemap/cache.db` inside each repo. Every run performs a fast scan (mtime/size) and only re-extracts files that changed.
+
+```bash
+# View cache statistics
+codemap --cache-stats
+
+# Force full re-extraction
+codemap --no-cache
+
+# Normal incremental run (default)
+codemap
+```
+
+- First run populates the cache for the full repo or selected patterns.
+- Subsequent runs are incremental unless you pass `--no-cache`.
+- Add `.codemap/` to your `.gitignore` (it's local cache, not meant to be shared).
+
+## Annotations
+
+Annotations attach persistent notes to files or symbols. They survive reindexing and appear in output.
+
+### File Annotations
+
+```bash
+# Add a note to a file
+codemap annotate src/db.ts "Core database abstraction layer"
+
+# Update (just run again with new text)
+codemap annotate src/db.ts "Updated description"
+
+# Remove
+codemap annotate src/db.ts --remove
+```
+
+### Symbol Annotations
+
+Symbol targets use the format: `<path>:<name>:<kind>[:<parent>]`
+
+```bash
+# Annotate a function
+codemap annotate src/auth.ts:validateToken:function "Returns null if expired"
+
+# Annotate a class
+codemap annotate src/db.ts:Database:class "Singleton - use getInstance()"
+
+# Annotate a method (specify parent class)
+codemap annotate src/db.ts:query:method:Database "Throws on connection failure"
+
+# Remove
+codemap annotate src/db.ts:validateToken:function --remove
+```
+
+Valid kinds: `function`, `class`, `interface`, `type`, `variable`, `enum`, `enum_member`, `method`, `property`, `constructor`, `getter`, `setter`
+
+### Listing Annotations
+
+```bash
+# List all annotations
+codemap annotations
+
+# Filter by file
+codemap annotations src/db.ts
+```
+
+### How Annotations Appear
+
+Text output:
+```
+src/db.ts [1-250]
+  [note: Core database abstraction layer]
+  class:
+    15-120: Database
+      [note: Singleton - use getInstance()]
+```
+
+JSON output includes `"annotation"` fields on files and symbols.
+
+### Orphaned Annotations
+
+When files or symbols are renamed/deleted, their annotations become orphaned:
+
+```bash
+# Check for orphans
+codemap --cache-stats
+# Shows: orphaned: 2 (run --prune-annotations to clean)
+
+# Remove orphaned annotations
+codemap --prune-annotations
+```
+
+## Output Examples
+
+### Text Output (default)
+
+```
+# Project Overview
+
+## Languages
+- typescript: 15 files
+- markdown: 3 files
+
+## Statistics
+- Total files: 18
+- Total symbols: 142
+
+---
+
+src/index.ts [1-45]
+  function:
+    12-25: main(): Promise<void> [exported]
+    27-45: parseArgs(argv: string[]): Config [exported]
+  imports:
+    - ./config.js
+    - ./server.js
+
+src/server.ts [1-200]
+  class:
+    15-180: Server [exported]
+      constructor:
+        20-35: constructor(config: Config)
+      method:
+        40-80: start(): Promise<void>
+        85-120: stop(): Promise<void>
+  ...
+
+---
+Files: 18
+Estimated tokens: 1,847
+```
+
+### JSON Output
+
+```bash
+codemap -o json | jq '.files[0]'
+```
+
+```json
+{
+  "path": "src/index.ts",
+  "language": "typescript",
+  "lines": [1, 45],
+  "annotation": null,
+  "symbols": [
+    {
+      "name": "main",
+      "kind": "function",
+      "signature": "main(): Promise<void>",
+      "lines": [12, 25],
+      "exported": true,
+      "annotation": null
+    }
+  ],
+  "imports": ["./config.js", "./server.js"]
+}
 ```
 
 ## Programmatic API
 
+Codemap can be used as a library in your own tools:
+
+```bash
+npm install codemap
+```
+
 ```typescript
-import { generateSourceMap, renderText } from "codemap";
+import { generateSourceMap, renderText, renderJson } from "codemap";
 
 const result = generateSourceMap({
   repoRoot: process.cwd(),
+  patterns: ["src/**/*.ts"],
+  ignore: ["**/*.test.ts"],
   includeComments: true,
   includeImports: true,
   includeHeadings: true,
   includeCodeBlocks: true,
   includeStats: true,
   exportedOnly: false,
-  output: "text",
+  tokenBudget: 8000,        // optional
+  useCache: true,           // default
+  forceRefresh: false,      // default
 });
 
-console.log(renderText(result, {
-  repoRoot: process.cwd(),
-  includeComments: true,
-  includeImports: true,
-  includeHeadings: true,
-  includeCodeBlocks: true,
-  includeStats: true,
-  exportedOnly: false,
-  output: "text",
-}));
+// Render as text or JSON
+console.log(renderText(result, { repoRoot: process.cwd(), /* ... */ }));
+console.log(renderJson(result));
+
+// Or access structured data directly
+for (const file of result.files) {
+  console.log(file.path, file.symbols.length, "symbols");
+  for (const sym of file.symbols) {
+    console.log(`  ${sym.kind}: ${sym.name}`);
+  }
+}
 ```
+
+### Additional Exports
+
+Lower-level functions for custom integrations:
+
+```typescript
+import {
+  // Core extraction
+  extractFileSymbols,      // Extract symbols from a single TS/JS file
+  extractMarkdownStructure, // Extract headings/code blocks from markdown
+  discoverFiles,           // Find files matching patterns
+  
+  // Utilities
+  detectLanguage,          // Detect language from file path
+  canExtractSymbols,       // Check if language supports symbol extraction
+  computeStats,            // Compute project statistics
+} from "codemap";
+
+// Types
+import type {
+  SourceMapResult,
+  SourceMapOptions,
+  FileEntry,
+  SymbolEntry,
+  SymbolKind,
+  DetailLevel,
+} from "codemap";
+```
+
+## Tips
+
+### Focusing on What Matters
+
+```bash
+# Only exported API surface
+codemap --exported-only
+
+# Specific directory
+codemap "src/api/**/*.ts"
+
+# Exclude tests and mocks
+codemap --ignore "**/*.test.ts" --ignore "**/mocks/**"
+```
+
+### Combining with Other Tools
+
+```bash
+# Find files with TODOs, then map them
+codemap $(grep -rl "TODO" src/)
+
+# Map only recently changed files
+codemap $(git diff --name-only HEAD~5)
+```
+
+### Agent Workflow Example
+
+```bash
+# 1. Add annotations for important context (one-time setup)
+codemap annotate src/db.ts "PostgreSQL, pool size 10"
+codemap annotate src/auth.ts:hashPassword:function "bcrypt, cost 12"
+
+# 2. Build a prompt file
+echo "# Project Context" > prompt.md
+codemap --budget 6000 >> prompt.md
+echo "" >> prompt.md
+echo "# Task" >> prompt.md
+echo "Add rate limiting to the API endpoints." >> prompt.md
+
+# 3. Send to agent
+codex "$(cat prompt.md)"
+```
+
+## License
+
+MIT

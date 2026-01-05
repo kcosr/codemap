@@ -1,5 +1,6 @@
 # Project bootstrap
 bootstrap/
+.codemap/
 
 # Node
 node_modules/

@@ -102,6 +102,10 @@ function renderSymbol(
   if (sym.exported) line += " [exported]";
   lines.push(line);
 
+  if (sym.annotation) {
+    lines.push(`${indent}  [note: ${sym.annotation}]`);
+  }
+
   if (level === "full" || level === "standard") {
     if (opts.includeComments && sym.comment) {
       const maxLen = level === "standard" ? 160 : undefined;
@@ -130,6 +134,10 @@ export function renderFileEntry(
 
   if (file.detailLevel === "outline") {
     return lines.join("\n");
+  }
+
+  if (file.annotation) {
+    lines.push(`  [note: ${file.annotation}]`);
   }
 
   if (file.symbols.length > 0) {
@@ -209,7 +217,11 @@ export function renderText(
 
   lines.push("---");
   lines.push(`Files: ${result.files.length}`);
-  lines.push(`Estimated tokens: ${result.totalTokens.toLocaleString()}`);
+  let tokenLine = `Estimated tokens: ${result.totalTokens.toLocaleString()}`;
+  if (result.codebaseTokens) {
+    tokenLine += ` (codebase: ~${result.codebaseTokens.toLocaleString()})`;
+  }
+  lines.push(tokenLine);
 
   return lines.join("\n");
 }
@@ -219,6 +231,7 @@ export function renderJson(result: SourceMapResult): string {
     {
       stats: result.stats,
       total_tokens: result.totalTokens,
+      codebase_tokens: result.codebaseTokens ?? null,
       files: result.files.map((f) => ({
         path: f.path,
         language: f.language,
@@ -236,8 +249,10 @@ export function renderJson(result: SourceMapResult): string {
           is_static: s.isStatic,
           is_abstract: s.isAbstract,
           parent_name: s.parentName ?? null,
+          annotation: s.annotation ?? null,
           comment: s.comment ?? null,
         })),
+        annotation: f.annotation ?? null,
         headings: f.headings ?? null,
         code_blocks: f.codeBlocks ?? null,
         imports: f.imports,
