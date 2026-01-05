@@ -6,13 +6,25 @@ import { generateSourceMap, refreshCache } from "./sourceMap.js";
 import { renderText, renderJson } from "./render.js";
 import { openCache } from "./cache/db.js";
 import type { CacheStats } from "./cache/db.js";
-import type { SymbolKind } from "./types.js";
+import type { SymbolKind, ReferenceList } from "./types.js";
+import type { SymbolRowWithId } from "./cache/db.js";
 import {
   buildDependencyTree,
   buildReverseDependencyTree,
   findCircularDependencies,
   renderDependencyTree,
 } from "./deps/tree.js";
+import { STRUCTURAL_REF_KINDS } from "./cache/references.js";
+import {
+  buildCallGraph,
+  buildCallersGraph,
+  renderCallGraph,
+} from "./refs/call-graph.js";
+import {
+  buildSubtypeHierarchy,
+  buildSupertypeHierarchy,
+  renderTypeHierarchy,
+} from "./refs/type-hierarchy.js";
 
 const SYMBOL_KINDS = new Set<SymbolKind>([
   "function",
@@ -94,6 +106,152 @@ function parseAnnotationTarget(raw: string): ParsedTarget {
       signature,
     },
   };
+}
+
+type SymbolTarget = {
+  path?: string | null;
+  name: string;
+  kind?: string | null;
+  parent?: string | null;
+};
+
+function parseSymbolTarget(raw: string): SymbolTarget {
+  const trimmed = raw.trim();
+  const parts = trimmed.split(":");
+  if (parts.length === 1) {
+    return { name: trimmed };
+  }
+  if (parts.length === 2) {
+    return { path: parts[0], name: parts[1] };
+  }
+  if (parts.length === 3) {
+    return { path: parts[0], name: parts[1], kind: parts[2] };
+  }
+  const [pathPart, parent, kind, ...rest] = parts;
+  return {
+    path: pathPart,
+    parent,
+    kind,
+    name: rest.join(":"),
+  };
+}
+
+function resolveSymbolTarget(
+  db: ReturnType<typeof openCache>,
+  repoRoot: string,
+  raw: string,
+): SymbolRowWithId {
+  const parsed = parseSymbolTarget(raw);
+  const path = parsed.path
+    ? normalizeRepoPath(repoRoot, parsed.path)
+    : null;
+  const matches = db.findSymbols(
+    path,
+    parsed.name,
+    parsed.kind ?? null,
+    parsed.parent ?? null,
+  );
+  if (matches.length === 0) {
+    throw new Error(`Symbol not found: ${raw}`);
+  }
+  if (matches.length > 1) {
+    const preview = matches
+      .slice(0, 5)
+      .map((sym) => formatSymbolLabel(sym))
+      .join(", ");
+    throw new Error(
+      `Multiple symbols matched "${raw}". Be more specific. Matches: ${preview}`,
+    );
+  }
+  return matches[0];
+}
+
+function formatSymbolLabel(symbol: SymbolRowWithId): string {
+  const parent = symbol.parent_name ? `${symbol.parent_name}.` : "";
+  return `${symbol.path}:${symbol.kind} ${parent}${symbol.name}`;
+}
+
+function normalizeRefsMode(
+  value: unknown,
+): "structural" | "full" | undefined {
+  if (value === undefined || value === false) return undefined;
+  if (value === true || value === "" || value === "structural") {
+    return "structural";
+  }
+  if (value === "full") return "full";
+  return undefined;
+}
+
+function resolveRefsOptions(argv: Record<string, unknown>): {
+  includeRefs: boolean;
+  refsMode?: "structural" | "full";
+  refsDirection?: "in" | "out" | "both";
+  maxRefs?: number;
+  forceRefs?: boolean;
+} {
+  const refsMode = normalizeRefsMode(argv.refs);
+  const refsIn = Boolean(argv["refs-in"]);
+  const refsOut = Boolean(argv["refs-out"]);
+  const includeRefs = Boolean(refsMode || refsIn || refsOut);
+  const direction = refsIn && refsOut ? "both" : refsOut ? "out" : "in";
+  const maxRefs =
+    typeof argv["max-refs"] === "number" && argv["max-refs"] > 0
+      ? (argv["max-refs"] as number)
+      : undefined;
+
+  return {
+    includeRefs,
+    refsMode: refsMode ?? (includeRefs ? "structural" : undefined),
+    refsDirection: direction,
+    maxRefs,
+    forceRefs: Boolean(argv["force-refs"]),
+  };
+}
+
+function formatReferenceList(
+  refs: ReferenceList,
+  label: string,
+  direction: "in" | "out",
+): string[] {
+  const lines: string[] = [];
+  const kinds = Object.entries(refs.byKind)
+    .filter(([, count]) => count && count > 0)
+    .map(([kind, count]) => `${kind}: ${count}`)
+    .join(", ");
+  let header = `${label}: ${refs.total}`;
+  if (refs.sampled < refs.total) {
+    header += ` (sampled ${refs.sampled})`;
+  }
+  if (kinds) {
+    header += ` [${kinds}]`;
+  }
+  lines.push(header);
+
+  for (const item of refs.items) {
+    lines.push(`- ${formatReferenceItem(item, direction)}`);
+  }
+
+  const hidden = refs.total - refs.items.length;
+  if (hidden > 0) {
+    lines.push(`... (${hidden} more)`);
+  }
+
+  return lines;
+}
+
+function formatReferenceItem(
+  item: ReferenceList["items"][number],
+  direction: "in" | "out",
+): string {
+  const symbolLabel = item.symbolParent
+    ? `${item.symbolParent}.${item.symbolName}`
+    : item.symbolName;
+  const location = `${item.refPath}:${item.refLine}`;
+  if (direction === "in") {
+    return `${location}: ${item.refKind} ${symbolLabel}`;
+  }
+  const target = item.symbolPath ?? "external";
+  return `${location}: ${item.refKind} ${symbolLabel} -> ${target}`;
 }
 
 function formatBytes(bytes: number): string {
@@ -318,6 +476,76 @@ const cli = yargs(hideBin(process.argv))
     },
   )
   .command(
+    "index [patterns...]",
+    "Refresh cache (and optionally references)",
+    (y) =>
+      y
+        .positional("patterns", {
+          describe: "File glob patterns to include",
+          type: "string",
+          array: true,
+        })
+        .option("ignore", {
+          type: "string",
+          array: true,
+          describe: "Ignore patterns (can be repeated)",
+        })
+        .option("no-cache", {
+          type: "boolean",
+          default: false,
+          describe: "Force full re-extraction (ignore cache)",
+        })
+        .option("refs", {
+          type: "string",
+          describe:
+            "Extract references (default structural). Use --refs=full for read/write refs.",
+        })
+        .option("force-refs", {
+          type: "boolean",
+          default: false,
+          describe: "Force re-extraction of references",
+        })
+        .option("tsconfig", {
+          type: "string",
+          describe: "Path to tsconfig.json or jsconfig.json",
+        })
+        .option("no-tsconfig", {
+          type: "boolean",
+          default: false,
+          describe: "Disable tsconfig-based resolution",
+        }),
+    (argv) => {
+      const repoRoot = argv.dir as string;
+      const refsOptions = resolveRefsOptions(argv as Record<string, unknown>);
+      const refresh = refreshCache({
+        repoRoot,
+        patterns: (argv.patterns as string[]) ?? [],
+        ignore: argv.ignore as string[] | undefined,
+        includeComments: true,
+        includeImports: true,
+        includeHeadings: true,
+        includeCodeBlocks: true,
+        includeStats: false,
+        exportedOnly: false,
+        output: "text",
+        forceRefresh: argv["no-cache"],
+        useCache: true,
+        tsconfigPath: argv.tsconfig
+          ? path.resolve(repoRoot, argv.tsconfig as string)
+          : undefined,
+        useTsconfig: !argv["no-tsconfig"],
+        includeRefs: refsOptions.includeRefs,
+        refsMode: refsOptions.refsMode,
+        refsDirection: refsOptions.refsDirection,
+        maxRefs: refsOptions.maxRefs,
+        forceRefs: refsOptions.forceRefs,
+      });
+
+      refresh.db.close();
+      console.log("Cache updated.");
+    },
+  )
+  .command(
     "$0 [patterns...]",
     "Generate code map",
     (y) =>
@@ -368,6 +596,30 @@ const cli = yargs(hideBin(process.argv))
           default: false,
           describe: "Exclude project statistics header",
         })
+        .option("refs", {
+          type: "string",
+          describe:
+            "Include references (default incoming). Use --refs=full for read/write refs.",
+        })
+        .option("refs-in", {
+          type: "boolean",
+          default: false,
+          describe: "Include incoming references",
+        })
+        .option("refs-out", {
+          type: "boolean",
+          default: false,
+          describe: "Include outgoing references",
+        })
+        .option("max-refs", {
+          type: "number",
+          describe: "Max references per symbol in output",
+        })
+        .option("force-refs", {
+          type: "boolean",
+          default: false,
+          describe: "Force re-extraction of references",
+        })
         .option("no-cache", {
           type: "boolean",
           default: false,
@@ -414,6 +666,7 @@ const cli = yargs(hideBin(process.argv))
       }
 
       const output = argv.output === "json" ? "json" : "text";
+      const refsOptions = resolveRefsOptions(argv as Record<string, unknown>);
 
       const opts = {
         repoRoot: repoRoot,
@@ -433,6 +686,11 @@ const cli = yargs(hideBin(process.argv))
           ? path.resolve(repoRoot, argv.tsconfig as string)
           : undefined,
         useTsconfig: !argv["no-tsconfig"],
+        includeRefs: refsOptions.includeRefs,
+        refsMode: refsOptions.refsMode,
+        refsDirection: refsOptions.refsDirection,
+        maxRefs: refsOptions.maxRefs,
+        forceRefs: refsOptions.forceRefs,
       } as const;
 
       const result = generateSourceMap(opts);
@@ -574,6 +832,511 @@ const cli = yargs(hideBin(process.argv))
           console.log(`- ${target}: ${row.note}`);
         }
       }
+    },
+  )
+  .command(
+    "find-refs <target>",
+    "Find references to a symbol",
+    (y) =>
+      y
+        .positional("target", {
+          describe: "Symbol target (name or path:name[:kind] or path:Parent:kind:member)",
+          type: "string",
+        })
+        .option("output", {
+          alias: "o",
+          type: "string",
+          choices: ["text", "json"] as const,
+          default: "text",
+          describe: "Output format",
+        })
+        .option("refs", {
+          type: "string",
+          describe:
+            "Reference mode: structural (default) or full (includes read/write).",
+        })
+        .option("max-refs", {
+          type: "number",
+          describe: "Max references to include in output",
+        })
+        .option("force-refs", {
+          type: "boolean",
+          default: false,
+          describe: "Force re-extraction of references",
+        })
+        .option("tsconfig", {
+          type: "string",
+          describe: "Path to tsconfig.json or jsconfig.json",
+        })
+        .option("no-tsconfig", {
+          type: "boolean",
+          default: false,
+          describe: "Disable tsconfig-based resolution",
+        }),
+    (argv) => {
+      const repoRoot = argv.dir as string;
+      const refsOptions = resolveRefsOptions(argv as Record<string, unknown>);
+      const refsMode = refsOptions.refsMode ?? "structural";
+      const refresh = refreshCache({
+        repoRoot,
+        patterns: [],
+        ignore: argv.ignore as string[] | undefined,
+        includeComments: true,
+        includeImports: true,
+        includeHeadings: true,
+        includeCodeBlocks: true,
+        includeStats: false,
+        exportedOnly: false,
+        output: "text",
+        useCache: true,
+        forceRefresh: false,
+        tsconfigPath: argv.tsconfig
+          ? path.resolve(repoRoot, argv.tsconfig as string)
+          : undefined,
+        useTsconfig: !argv["no-tsconfig"],
+        refsMode,
+        forceRefs: refsOptions.forceRefs,
+      });
+
+      const db = refresh.db;
+      const symbol = resolveSymbolTarget(db, repoRoot, argv.target as string);
+      const refKinds =
+        refsMode === "full" ? undefined : STRUCTURAL_REF_KINDS;
+      const refs = db.getReferenceList(
+        "in",
+        { symbolId: symbol.id },
+        refKinds,
+        refsOptions.maxRefs,
+      );
+      db.close();
+
+      if (argv.output === "json") {
+        console.log(
+          JSON.stringify(
+            {
+              symbol: formatSymbolLabel(symbol),
+              refs,
+            },
+            null,
+            2,
+          ),
+        );
+        return;
+      }
+
+      const lines = formatReferenceList(
+        refs,
+        `incoming refs for ${formatSymbolLabel(symbol)}`,
+        "in",
+      );
+      console.log(lines.join("\n"));
+    },
+  )
+  .command(
+    "calls <target>",
+    "Show outgoing call references",
+    (y) =>
+      y
+        .positional("target", {
+          describe: "Symbol target (name or path:name[:kind])",
+          type: "string",
+        })
+        .option("output", {
+          alias: "o",
+          type: "string",
+          choices: ["text", "json"] as const,
+          default: "text",
+          describe: "Output format",
+        })
+        .option("max-refs", {
+          type: "number",
+          describe: "Max references to include in output",
+        })
+        .option("force-refs", {
+          type: "boolean",
+          default: false,
+          describe: "Force re-extraction of references",
+        })
+        .option("tsconfig", {
+          type: "string",
+          describe: "Path to tsconfig.json or jsconfig.json",
+        })
+        .option("no-tsconfig", {
+          type: "boolean",
+          default: false,
+          describe: "Disable tsconfig-based resolution",
+        }),
+    (argv) => {
+      const repoRoot = argv.dir as string;
+      const refresh = refreshCache({
+        repoRoot,
+        patterns: [],
+        ignore: argv.ignore as string[] | undefined,
+        includeComments: true,
+        includeImports: true,
+        includeHeadings: true,
+        includeCodeBlocks: true,
+        includeStats: false,
+        exportedOnly: false,
+        output: "text",
+        useCache: true,
+        forceRefresh: false,
+        tsconfigPath: argv.tsconfig
+          ? path.resolve(repoRoot, argv.tsconfig as string)
+          : undefined,
+        useTsconfig: !argv["no-tsconfig"],
+        refsMode: "structural",
+        forceRefs: argv["force-refs"] as boolean,
+      });
+
+      const db = refresh.db;
+      const symbol = resolveSymbolTarget(db, repoRoot, argv.target as string);
+      const refs = db.getReferenceList(
+        "out",
+        { symbolId: symbol.id },
+        ["call", "instantiate"],
+        argv["max-refs"] as number | undefined,
+      );
+      db.close();
+
+      if (argv.output === "json") {
+        console.log(
+          JSON.stringify(
+            {
+              symbol: formatSymbolLabel(symbol),
+              refs,
+            },
+            null,
+            2,
+          ),
+        );
+        return;
+      }
+
+      const lines = formatReferenceList(
+        refs,
+        `calls from ${formatSymbolLabel(symbol)}`,
+        "out",
+      );
+      console.log(lines.join("\n"));
+    },
+  )
+  .command(
+    "callers <target>",
+    "Show incoming call references",
+    (y) =>
+      y
+        .positional("target", {
+          describe: "Symbol target (name or path:name[:kind])",
+          type: "string",
+        })
+        .option("output", {
+          alias: "o",
+          type: "string",
+          choices: ["text", "json"] as const,
+          default: "text",
+          describe: "Output format",
+        })
+        .option("max-refs", {
+          type: "number",
+          describe: "Max references to include in output",
+        })
+        .option("force-refs", {
+          type: "boolean",
+          default: false,
+          describe: "Force re-extraction of references",
+        })
+        .option("tsconfig", {
+          type: "string",
+          describe: "Path to tsconfig.json or jsconfig.json",
+        })
+        .option("no-tsconfig", {
+          type: "boolean",
+          default: false,
+          describe: "Disable tsconfig-based resolution",
+        }),
+    (argv) => {
+      const repoRoot = argv.dir as string;
+      const refresh = refreshCache({
+        repoRoot,
+        patterns: [],
+        ignore: argv.ignore as string[] | undefined,
+        includeComments: true,
+        includeImports: true,
+        includeHeadings: true,
+        includeCodeBlocks: true,
+        includeStats: false,
+        exportedOnly: false,
+        output: "text",
+        useCache: true,
+        forceRefresh: false,
+        tsconfigPath: argv.tsconfig
+          ? path.resolve(repoRoot, argv.tsconfig as string)
+          : undefined,
+        useTsconfig: !argv["no-tsconfig"],
+        refsMode: "structural",
+        forceRefs: argv["force-refs"] as boolean,
+      });
+
+      const db = refresh.db;
+      const symbol = resolveSymbolTarget(db, repoRoot, argv.target as string);
+      const refs = db.getReferenceList(
+        "in",
+        { symbolId: symbol.id },
+        ["call", "instantiate"],
+        argv["max-refs"] as number | undefined,
+      );
+      db.close();
+
+      if (argv.output === "json") {
+        console.log(
+          JSON.stringify(
+            {
+              symbol: formatSymbolLabel(symbol),
+              refs,
+            },
+            null,
+            2,
+          ),
+        );
+        return;
+      }
+
+      const lines = formatReferenceList(
+        refs,
+        `callers of ${formatSymbolLabel(symbol)}`,
+        "in",
+      );
+      console.log(lines.join("\n"));
+    },
+  )
+  .command(
+    "call-graph <target>",
+    "Show call graph for a symbol",
+    (y) =>
+      y
+        .positional("target", {
+          describe: "Symbol target (name or path:name[:kind])",
+          type: "string",
+        })
+        .option("output", {
+          alias: "o",
+          type: "string",
+          choices: ["text", "json"] as const,
+          default: "text",
+          describe: "Output format",
+        })
+        .option("depth", {
+          type: "number",
+          default: 3,
+          describe: "Max depth",
+        })
+        .option("reverse", {
+          type: "boolean",
+          default: false,
+          describe: "Show callers instead of callees",
+        })
+        .option("force-refs", {
+          type: "boolean",
+          default: false,
+          describe: "Force re-extraction of references",
+        })
+        .option("tsconfig", {
+          type: "string",
+          describe: "Path to tsconfig.json or jsconfig.json",
+        })
+        .option("no-tsconfig", {
+          type: "boolean",
+          default: false,
+          describe: "Disable tsconfig-based resolution",
+        }),
+    (argv) => {
+      const repoRoot = argv.dir as string;
+      const refresh = refreshCache({
+        repoRoot,
+        patterns: [],
+        ignore: argv.ignore as string[] | undefined,
+        includeComments: true,
+        includeImports: true,
+        includeHeadings: true,
+        includeCodeBlocks: true,
+        includeStats: false,
+        exportedOnly: false,
+        output: "text",
+        useCache: true,
+        forceRefresh: false,
+        tsconfigPath: argv.tsconfig
+          ? path.resolve(repoRoot, argv.tsconfig as string)
+          : undefined,
+        useTsconfig: !argv["no-tsconfig"],
+        refsMode: "structural",
+        forceRefs: argv["force-refs"] as boolean,
+      });
+
+      const db = refresh.db;
+      const symbol = resolveSymbolTarget(db, repoRoot, argv.target as string);
+      const depth = Number.isFinite(argv.depth)
+        ? (argv.depth as number)
+        : 3;
+      const graph = argv.reverse
+        ? buildCallersGraph(db, symbol.id, depth)
+        : buildCallGraph(db, symbol.id, depth);
+      db.close();
+
+      if (argv.output === "json") {
+        console.log(JSON.stringify(graph, null, 2));
+        return;
+      }
+
+      console.log(renderCallGraph(graph));
+    },
+  )
+  .command(
+    "subtypes <target>",
+    "Show subtype hierarchy for a symbol",
+    (y) =>
+      y
+        .positional("target", {
+          describe: "Symbol target (name or path:name[:kind])",
+          type: "string",
+        })
+        .option("output", {
+          alias: "o",
+          type: "string",
+          choices: ["text", "json"] as const,
+          default: "text",
+          describe: "Output format",
+        })
+        .option("depth", {
+          type: "number",
+          default: 3,
+          describe: "Max depth",
+        })
+        .option("force-refs", {
+          type: "boolean",
+          default: false,
+          describe: "Force re-extraction of references",
+        })
+        .option("tsconfig", {
+          type: "string",
+          describe: "Path to tsconfig.json or jsconfig.json",
+        })
+        .option("no-tsconfig", {
+          type: "boolean",
+          default: false,
+          describe: "Disable tsconfig-based resolution",
+        }),
+    (argv) => {
+      const repoRoot = argv.dir as string;
+      const refresh = refreshCache({
+        repoRoot,
+        patterns: [],
+        ignore: argv.ignore as string[] | undefined,
+        includeComments: true,
+        includeImports: true,
+        includeHeadings: true,
+        includeCodeBlocks: true,
+        includeStats: false,
+        exportedOnly: false,
+        output: "text",
+        useCache: true,
+        forceRefresh: false,
+        tsconfigPath: argv.tsconfig
+          ? path.resolve(repoRoot, argv.tsconfig as string)
+          : undefined,
+        useTsconfig: !argv["no-tsconfig"],
+        refsMode: "structural",
+        forceRefs: argv["force-refs"] as boolean,
+      });
+
+      const db = refresh.db;
+      const symbol = resolveSymbolTarget(db, repoRoot, argv.target as string);
+      const depth = Number.isFinite(argv.depth)
+        ? (argv.depth as number)
+        : 3;
+      const graph = buildSubtypeHierarchy(db, symbol.id, depth);
+      db.close();
+
+      if (argv.output === "json") {
+        console.log(JSON.stringify(graph, null, 2));
+        return;
+      }
+
+      console.log(renderTypeHierarchy(graph));
+    },
+  )
+  .command(
+    "supertypes <target>",
+    "Show supertype hierarchy for a symbol",
+    (y) =>
+      y
+        .positional("target", {
+          describe: "Symbol target (name or path:name[:kind])",
+          type: "string",
+        })
+        .option("output", {
+          alias: "o",
+          type: "string",
+          choices: ["text", "json"] as const,
+          default: "text",
+          describe: "Output format",
+        })
+        .option("depth", {
+          type: "number",
+          default: 3,
+          describe: "Max depth",
+        })
+        .option("force-refs", {
+          type: "boolean",
+          default: false,
+          describe: "Force re-extraction of references",
+        })
+        .option("tsconfig", {
+          type: "string",
+          describe: "Path to tsconfig.json or jsconfig.json",
+        })
+        .option("no-tsconfig", {
+          type: "boolean",
+          default: false,
+          describe: "Disable tsconfig-based resolution",
+        }),
+    (argv) => {
+      const repoRoot = argv.dir as string;
+      const refresh = refreshCache({
+        repoRoot,
+        patterns: [],
+        ignore: argv.ignore as string[] | undefined,
+        includeComments: true,
+        includeImports: true,
+        includeHeadings: true,
+        includeCodeBlocks: true,
+        includeStats: false,
+        exportedOnly: false,
+        output: "text",
+        useCache: true,
+        forceRefresh: false,
+        tsconfigPath: argv.tsconfig
+          ? path.resolve(repoRoot, argv.tsconfig as string)
+          : undefined,
+        useTsconfig: !argv["no-tsconfig"],
+        refsMode: "structural",
+        forceRefs: argv["force-refs"] as boolean,
+      });
+
+      const db = refresh.db;
+      const symbol = resolveSymbolTarget(db, repoRoot, argv.target as string);
+      const depth = Number.isFinite(argv.depth)
+        ? (argv.depth as number)
+        : 3;
+      const graph = buildSupertypeHierarchy(db, symbol.id, depth);
+      db.close();
+
+      if (argv.output === "json") {
+        console.log(JSON.stringify(graph, null, 2));
+        return;
+      }
+
+      console.log(renderTypeHierarchy(graph));
     },
   )
   .help()

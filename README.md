@@ -136,6 +136,11 @@ Options:
   --no-headings          Exclude markdown headings
   --no-code-blocks       Exclude markdown code block ranges
   --no-stats             Exclude project statistics header
+  --refs                 Include references (incoming). Use --refs=full for read/write refs
+  --refs-in              Include incoming references
+  --refs-out             Include outgoing references
+  --max-refs             Max references per symbol in output
+  --force-refs           Force re-extraction of references
   --no-cache             Force full re-extraction (ignore cache)
   --cache-stats          Show cache statistics
   --prune-annotations    Remove orphaned annotations
@@ -196,6 +201,151 @@ src/a.ts
   - src/b.ts
     - src/c.ts
       - src/a.ts (circular ref)
+```
+
+### References (Cross-File Symbol Tracking)
+
+Reference tracking finds where symbols are used across your codebase. Use cases:
+- "Find all usages" - who calls this function? where is this type used?
+- Call graphs - what does this function call? who calls it?
+- Type hierarchy - what extends/implements this class/interface?
+
+**Reference kinds tracked:**
+
+| Kind | Example |
+|------|---------|
+| `import` | `import { foo } from './bar'` |
+| `reexport` | `export { foo } from './bar'` |
+| `call` | `foo()`, `obj.method()` |
+| `instantiate` | `new MyClass()` |
+| `type` | `const x: MyType`, `function f(): MyType` |
+| `extends` | `class A extends B` |
+| `implements` | `class A implements I` |
+| `read` | `const x = y` (full mode only) |
+| `write` | `x = 5` (full mode only) |
+
+**Basic usage:**
+
+```bash
+# Include incoming refs in source map output
+codemap "src/**/*.ts" --refs
+
+# Include outgoing refs
+codemap "src/**/*.ts" --refs-out
+
+# Both directions
+codemap "src/**/*.ts" --refs --refs-in --refs-out
+
+# Include read/write refs (noisier)
+codemap "src/**/*.ts" --refs=full
+
+# Limit refs shown per symbol
+codemap "src/**/*.ts" --refs --max-refs 5
+
+# Pre-populate cache with refs (without output)
+codemap index --refs
+```
+
+**Find all usages of a symbol:**
+
+```bash
+codemap find-refs CacheDB
+```
+
+```
+incoming refs for src/cache/db.ts:class CacheDB: 36 [import: 6, instantiate: 1, reexport: 1, type: 28]
+- src/deps/tree.ts:1: import (module)
+- src/deps/tree.ts:28: type buildForwardNode
+- src/refs/update.ts:78: instantiate symbolIndex
+- src/sourceMap.ts:266: type buildEntriesFromCache
+...
+```
+
+Target symbols by path:name for disambiguation:
+
+```bash
+codemap find-refs src/cache/db.ts:openCache
+codemap find-refs src/types.ts:ReferenceKind:type
+```
+
+**Call graph queries:**
+
+```bash
+# What does this function call?
+codemap calls refreshCache
+```
+
+```
+calls from src/sourceMap.ts:function refreshCache: 8 [call: 8]
+- src/sourceMap.ts:572: call CacheDB.ensureExtractorVersion -> src/cache/db.ts
+- src/sourceMap.ts:611: call updateCache -> src/sourceMap.ts
+- src/sourceMap.ts:614: call updateReferences -> src/refs/update.ts
+...
+```
+
+```bash
+# Who calls this function?
+codemap callers openCache
+```
+
+```
+callers of src/cache/db.ts:function openCache: 12 [call: 12]
+- src/cli.ts:651: call db
+- src/cli.ts:659: call db
+- src/sourceMap.ts:571: call db
+...
+```
+
+```bash
+# Tree view with depth control
+codemap call-graph refreshCache --depth 2
+```
+
+```
+src/sourceMap.ts:function refreshCache
+  - src/cache/db.ts:method ensureExtractorVersion
+    - src/cache/db.ts:method clearFiles
+    - src/cache/meta.ts:function setMeta
+  - src/sourceMap.ts:function updateCache
+    - src/cache/db.ts:method updateLastUpdated
+    - src/sourceMap.ts:function extractFileForCache
+  - src/refs/update.ts:function updateReferences
+    - src/cache/db.ts:method deleteRefState
+    - src/refs/update.ts:variable clearRefs
+```
+
+```bash
+# Reverse call graph (callers tree)
+codemap call-graph openCache --callers --depth 2
+```
+
+**Type hierarchy:**
+
+```bash
+# What extends/implements this class/interface?
+codemap subtypes MyBaseClass
+
+# What does this class extend/implement?
+codemap supertypes MyClass
+```
+
+**JSON output:**
+
+```bash
+codemap find-refs CacheDB -o json
+codemap call-graph main -o json
+```
+
+```json
+{
+  "symbol": "src/cache/db.ts:class CacheDB",
+  "refs": {
+    "total": 36,
+    "sampled": 36,
+    "byKind": { "import": 6, "instantiate": 1, "reexport": 1, "type": 28 },
+    "items": [...]
+  }
+}
 ```
 
 ## Caching

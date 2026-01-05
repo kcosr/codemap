@@ -21,6 +21,18 @@ export {
   renderDependencyTree,
 } from "./deps/tree.js";
 export type { DependencyTreeNode } from "./deps/tree.js";
+export {
+  buildCallGraph,
+  buildCallersGraph,
+  renderCallGraph,
+} from "./refs/call-graph.js";
+export type { CallGraphNode } from "./refs/call-graph.js";
+export {
+  buildSubtypeHierarchy,
+  buildSupertypeHierarchy,
+  renderTypeHierarchy,
+} from "./refs/type-hierarchy.js";
+export type { TypeHierarchyNode } from "./refs/type-hierarchy.js";
 
 export type {
   Language,
@@ -35,4 +47,7 @@ export type {
   SourceMapOptions,
   ImportKind,
   ResolvedImport,
+  ReferenceKind,
+  ReferenceItem,
+  ReferenceList,
 } from "./types.js";

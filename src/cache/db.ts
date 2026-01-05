@@ -24,6 +24,16 @@ import {
   listExternalPackages,
   type ResolvedImportRow,
 } from "./resolved-imports.js";
+import {
+  insertReferences,
+  deleteReferencesFrom,
+  getReferenceList,
+  listReferenceRows,
+  getRefStates,
+  upsertRefState,
+  deleteRefState,
+} from "./references.js";
+import type { ReferenceRow, RefStateRow } from "./references.js";
 import { ensureMeta, readMeta, setMeta, updateLastUpdated } from "./meta.js";
 
 export const EXTRACTOR_VERSION = "2";
@@ -61,6 +71,10 @@ export type SymbolRow = {
   is_abstract: number;
   parent_name: string | null;
   jsdoc: string | null;
+};
+
+export type SymbolRowWithId = SymbolRow & {
+  id: number;
 };
 
 export type ImportRow = {
@@ -238,12 +252,56 @@ export class CacheDB {
     }
   }
 
-  getSymbols(path: string): SymbolRow[] {
+  getSymbols(path: string): SymbolRowWithId[] {
     return this.db
       .prepare(
-        "SELECT path, name, kind, signature, start_line, end_line, exported, is_default, is_async, is_static, is_abstract, parent_name, jsdoc FROM symbols WHERE path = ? ORDER BY start_line",
+        "SELECT id, path, name, kind, signature, start_line, end_line, exported, is_default, is_async, is_static, is_abstract, parent_name, jsdoc FROM symbols WHERE path = ? ORDER BY start_line",
       )
-      .all(path) as SymbolRow[];
+      .all(path) as SymbolRowWithId[];
+  }
+
+  getSymbolById(id: number): SymbolRowWithId | undefined {
+    return this.db
+      .prepare(
+        "SELECT id, path, name, kind, signature, start_line, end_line, exported, is_default, is_async, is_static, is_abstract, parent_name, jsdoc FROM symbols WHERE id = ?",
+      )
+      .get(id) as SymbolRowWithId | undefined;
+  }
+
+  findSymbolsByName(name: string): SymbolRowWithId[] {
+    return this.db
+      .prepare(
+        "SELECT id, path, name, kind, signature, start_line, end_line, exported, is_default, is_async, is_static, is_abstract, parent_name, jsdoc FROM symbols WHERE name = ? ORDER BY path, start_line",
+      )
+      .all(name) as SymbolRowWithId[];
+  }
+
+  findSymbols(
+    path: string | null,
+    name: string,
+    kind?: string | null,
+    parentName?: string | null,
+  ): SymbolRowWithId[] {
+    const clauses: string[] = ["name = ?"];
+    const params: Array<string | null> = [name];
+    if (path) {
+      clauses.push("path = ?");
+      params.push(path);
+    }
+    if (kind) {
+      clauses.push("kind = ?");
+      params.push(kind);
+    }
+    if (parentName !== undefined && parentName !== null) {
+      clauses.push("parent_name = ?");
+      params.push(parentName);
+    }
+    const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
+    return this.db
+      .prepare(
+        `SELECT id, path, name, kind, signature, start_line, end_line, exported, is_default, is_async, is_static, is_abstract, parent_name, jsdoc FROM symbols ${where} ORDER BY path, start_line`,
+      )
+      .all(...params) as SymbolRowWithId[];
   }
 
   getImports(path: string): string[] {
@@ -283,6 +341,43 @@ export class CacheDB {
         "SELECT path, language, start_line, end_line FROM code_blocks WHERE path = ? ORDER BY start_line",
       )
       .all(path) as CodeBlockRow[];
+  }
+
+  insertReferences(refs: ReferenceRow[]): void {
+    insertReferences(this.db, refs);
+  }
+
+  deleteReferencesFrom(path: string): void {
+    deleteReferencesFrom(this.db, path);
+  }
+
+  getReferenceList(
+    direction: Parameters<typeof getReferenceList>[1]["direction"],
+    key: Parameters<typeof getReferenceList>[1]["key"],
+    refKinds?: Parameters<typeof getReferenceList>[1]["refKinds"],
+    maxItems?: Parameters<typeof getReferenceList>[1]["maxItems"],
+  ): ReturnType<typeof getReferenceList> {
+    return getReferenceList(this.db, { direction, key, refKinds, maxItems });
+  }
+
+  listReferenceRows(
+    direction: Parameters<typeof listReferenceRows>[1]["direction"],
+    key: Parameters<typeof listReferenceRows>[1]["key"],
+    refKinds?: Parameters<typeof listReferenceRows>[1]["refKinds"],
+  ): ReturnType<typeof listReferenceRows> {
+    return listReferenceRows(this.db, { direction, key, refKinds });
+  }
+
+  getRefStates(): Map<string, RefStateRow> {
+    return getRefStates(this.db);
+  }
+
+  upsertRefState(path: string, refsHash: string, projectHash: string | null): void {
+    upsertRefState(this.db, path, refsHash, projectHash);
+  }
+
+  deleteRefState(path: string): void {
+    deleteRefState(this.db, path);
   }
 
   getMeta(): { createdAt: string | null; lastUpdatedAt: string | null; extractorVersion: string | null } {
