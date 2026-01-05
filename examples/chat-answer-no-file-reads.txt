@@ -7,8 +7,8 @@ $ claude "$(cat prompt.txt)"
 │                    * ▝▜█████▛▘ *                   │ Recent activity         │
 │                     *  ▘▘ ▝▝  *                    │ No recent activity      │
 │                                                    │                         │
-│    Opus 4.5 · Claude Max · a5551212@gmail.com's    │                         │
-│    Organization                                    │                         │
+│    Opus 4.5 · Claude Max                           │                         │
+│                                                    │                         │
 │             ~/worktrees/codemap/index-1            │                         │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 
