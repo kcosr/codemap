@@ -1,0 +1,102 @@
+export type Language =
+  | "typescript"
+  | "javascript"
+  | "markdown"
+  | "other";
+
+export type SymbolKind =
+  | "function"
+  | "class"
+  | "interface"
+  | "type"
+  | "variable"
+  | "enum"
+  | "enum_member"
+  | "method"
+  | "property"
+  | "constructor"
+  | "getter"
+  | "setter";
+
+export type SymbolEntry = {
+  name: string;
+  kind: SymbolKind;
+  signature: string;
+  startLine: number;
+  endLine: number;
+  exported: boolean;
+  isDefault: boolean;
+  isAsync: boolean;
+  isStatic: boolean;
+  isAbstract: boolean;
+  parentName?: string;
+  comment?: string;
+  children?: SymbolEntry[];
+};
+
+export type MarkdownHeading = {
+  level: number;
+  text: string;
+  line: number;
+};
+
+export type MarkdownCodeBlock = {
+  language: string | null;
+  startLine: number;
+  endLine: number;
+};
+
+export type DetailLevel =
+  | "full"
+  | "standard"
+  | "compact"
+  | "minimal"
+  | "outline";
+
+export type FileEntry = {
+  path: string;
+  language: Language;
+  startLine: number;
+  endLine: number;
+  detailLevel: DetailLevel;
+  symbols: SymbolEntry[];
+  headings?: MarkdownHeading[];
+  codeBlocks?: MarkdownCodeBlock[];
+  imports: string[];
+  tokenEstimate: number;
+};
+
+export type ProjectStats = {
+  totalFiles: number;
+  totalSymbols: number;
+  byLanguage: Record<string, number>;
+  bySymbolKind: Record<string, number>;
+};
+
+export type SourceMapResult = {
+  repoRoot: string;
+  stats: ProjectStats | null;
+  files: FileEntry[];
+  totalTokens: number;
+};
+
+export type SourceMapOptions = {
+  // Target
+  repoRoot: string;
+  patterns?: string[];
+  ignore?: string[];
+
+  // Content control
+  includeComments: boolean;
+  includeImports: boolean;
+  includeHeadings: boolean;
+  includeCodeBlocks: boolean;
+  includeStats: boolean;
+  exportedOnly: boolean;
+
+  // Budget
+  tokenBudget?: number;
+
+  // Output
+  output: "text" | "json";
+};
