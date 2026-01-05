@@ -1,0 +1,669 @@
+$ claude "$(cat prompt.txt)"
+╭─── Claude Code v2.0.76 ──────────────────────────────────────────────────────╮
+│                                                    │ Tips for getting        │
+│                 Welcome back Kevin!                │ started                 │
+│                                                    │ Run /init to create a … │
+│                     * ▐▛███▜▌ *                    │ ─────────────────────── │
+│                    * ▝▜█████▛▘ *                   │ Recent activity         │
+│                     *  ▘▘ ▝▝  *                    │ No recent activity      │
+│                                                    │                         │
+│    Opus 4.5 · Claude Max · a5551212@gmail.com's    │                         │
+│    Organization                                    │                         │
+│             ~/worktrees/codemap/index-1            │                         │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+> <context>
+# Project Overview
+
+## Languages
+- typescript: 22 files
+- other: 5 files
+- markdown: 2 files
+
+## Statistics
+- Total files: 29
+- Total symbols: 162
+  - function: 80
+  - type: 32
+  - method: 31
+  - variable: 14
+  - property: 2
+  - class: 1
+  - constructor: function Object() { [native code] }1
+  - getter: 1
+
+---
+
+.gitignore [1-38]
+
+AGENTS.md [1-23]
+  headings:
+    1: # Agent Onboarding (Codemap)
+    5: ## Start Here
+    10: ## Conventions
+    16: ## Testing Requirements
+
+LICENSE [1-22]
+
+README.md [1-413]
+  headings:
+    1: # Codemap
+    5: ## Supported Languages
+    11: ## Install
+    25: ## Quick Start
+    41: ## Using with AI Agents
+    45: ### Building a Prompt File
+    68: ### Quick One-Liner (Small Repos)
+    76: ### Token Budget and Detail Levels
+    118: ## CLI Reference
+    142: ## Caching
+    161: ## Annotations
+    165: ### File Annotations
+    178: ### Symbol Annotations
+    198: ### Listing Annotations
+    208: ### How Annotations Appear
+    221: ### Orphaned Annotations
+    234: ## Output Examples
+    236: ### Text Output (default)
+    274: ### JSON Output
+    300: ## Programmatic API
+    339: ### Additional Exports
+    367: ## Tips
+    369: ### Focusing on What Matters
+    382: ### Combining with Other Tools
+    392: ### Agent Workflow Example
+    410: ## License
+  code blocks: 23 (bash: 17, unknown: 3, json: 1, typescript: 2)
+
+package-lock.json [1-2429]
+
+package.json [1-37]
+
+src/cache/annotations.ts [1-254]
+  type:
+    3-3: DB = Database.Database
+    5-11: SymbolAnnotationKey = {
+  path: string;
+  symbolName: string;
+  symbolKind: SymbolKind | string;
+  parentName?: string | null;
+  signature?: string | null;
+} [exported]
+    13-18: FileAnnotationRow = {
+  path: string;
+  note: string;
+  created_at: string;
+  updated_at: string;
+} [exported]
+    20-29: SymbolAnnotationRow = {
+  path: string;
+  symbol_name: string;
+  symbol_kind: string;
+  parent_name: string | null;
+  signature: string;
+  note: string;
+  created_at: string;
+  updated_at: string;
+} [exported]
+  function:
+    31-38: symbolKey(name: string, kind: string, parentName: string | null, 
+signature: string): string
+    40-48: getFileAnnotation(db: DB, path: string): string [exported]
+    50-59: setFileAnnotation(db: DB, path: string, note: string): void 
+[exported]
+    61-65: removeFileAnnotation(db: DB, path: string): number [exported]
+    67-83: listFileAnnotations(db: DB, path?: string): {} [exported]
+    85-118: getSymbolAnnotation(db: DB, key: SymbolAnnotationKey): string 
+[exported]
+    120-139: setSymbolAnnotation(db: DB, key: SymbolAnnotationKey, note: 
+string): void [exported]
+    141-157: removeSymbolAnnotation(db: DB, key: SymbolAnnotationKey): 
+number [exported]
+    159-175: listSymbolAnnotations(db: DB, path?: string): {} [exported]
+    177-201: getSymbolAnnotationMap(db: DB, path: string): Map<string, 
+string> [exported]
+    203-222: countOrphanedAnnotations(db: DB): { file: number; symbol: 
+number; } [exported]
+    224-244: pruneOrphanedAnnotations(db: DB): { file: number; symbol: 
+number; } [exported]
+    246-253: buildSymbolAnnotationKey(name: string, kind: string, 
+parentName: string | null, signature: string | null): string [exported]
+  imports:
+    - ../types.js
+    - better-sqlite3
+
+src/cache/changes.ts [1-96]
+  type:
+    6-11: DiscoveredFile = {
+  path: string;
+  fullPath: string;
+  mtime: number;
+  size: number;
+} [exported]
+    13-16: FileChange = {
+  path: string;
+  status: "added" | "modified" | "deleted";
+} [exported]
+    18-22: FileTouch = {
+  path: string;
+  mtime: number;
+  size: number;
+} [exported]
+  function:
+    24-45: statDiscoveredFiles(repoRoot: string, files: string[]): {} 
+[exported]
+    47-50: computeFileHash(fullPath: string): string [exported]
+    52-95: detectChanges(discovered: DiscoveredFile[], cached: Map<string, 
+CachedFile>): { changes: {}; touches: {}; } [exported]
+  imports:
+    - ./db.js
+    - node:crypto
+    - node:fs
+    - node:path
+
+src/cache/db.ts [1-405]
+  type:
+    22-22: DB = Database.Database
+    24-29: CachedFile = {
+  path: string;
+  mtime: number;
+  size: number;
+  hash: string;
+} [exported]
+    31-40: FileRow = {
+  path: string;
+  mtime: number;
+  size: number;
+  hash: string;
+  language: Language;
+  line_count: number;
+  extractor_version: string;
+  updated_at: string;
+} [exported]
+    42-56: SymbolRow = {
+  path: string;
+  name: string;
+  kind: SymbolKind;
+  signature: string | null;
+  start_line: number;
+  end_line: number;
+  exported: number;
+  is_default: number;
+  is_async: number;
+  is_static: n... [exported]
+    58-61: ImportRow = {
+  path: string;
+  source: string;
+} [exported]
+    63-68: HeadingRow = {
+  path: string;
+  level: number;
+  text: string;
+  line: number;
+} [exported]
+    70-75: CodeBlockRow = {
+  path: string;
+  language: string | null;
+  start_line: number;
+  end_line: number;
+} [exported]
+    77-100: CacheStats = {
+  cachePath: string;
+  sizeBytes: number;
+  meta: {
+    createdAt: string | null;
+    lastUpdatedAt: string | null;
+    extractorVersion: string | null;
+  };
+  files: {
+    total: number;
+    byLang... [exported]
+  class:
+    102-383: class CacheDB [exported]
+      103-103: db: DB
+      104-104: cachePath: string
+      106-109: constructor(db: DB, cachePath: string)
+      111-113: get path(): string
+      115-117: close(): void
+      119-121: transaction<T extends (...args: any[]) => any>(fn: T): 
+Database.Transaction<T>
+      123-132: getCachedFiles(): Map<string, CachedFile>
+      134-140: getFile(path: string): FileRow
+      142-157: insertFile(file: FileRow): void
+      159-163: touchFile(path: string, mtime: number, size: number): void
+      165-167: deleteFile(path: string): void
+      169-171: clearFiles(): void
+      173-195: insertSymbols(path: string, symbols: SymbolRow[]): void
+      197-205: insertImports(path: string, imports: ImportRow[]): void
+      207-215: insertHeadings(path: string, headings: HeadingRow[]): void
+      217-225: insertCodeBlocks(path: string, blocks: CodeBlockRow[]): void
+      227-233: getSymbols(path: string): {}
+      235-240: getImports(path: string): {}
+      242-248: getHeadings(path: string): {}
+      250-256: getCodeBlocks(path: string): {}
+      258-260: getMeta(): { createdAt: string; lastUpdatedAt: string; 
+extractorVersion: string; }
+      262-270: ensureExtractorVersion(version: string): boolean
+      272-274: updateLastUpdated(): string
+      276-278: getFileAnnotation(path: string): string
+      280-282: setFileAnnotation(path: string, note: string): void
+      284-286: removeFileAnnotation(path: string): number
+      288-290: listFileAnnotations(path?: string): ReturnType<any>
+      292-296: getSymbolAnnotation(key: Parameters<typeof 
+getSymbolAnnotation>[1]): string
+      298-303: setSymbolAnnotation(key: Parameters<typeof 
+setSymbolAnnotation>[1], note: string): void
+      305-307: removeSymbolAnnotation(key: Parameters<typeof 
+removeSymbolAnnotation>[1]): number
+      309-311: listSymbolAnnotations(path?: string): ReturnType<any>
+      313-315: getSymbolAnnotationMap(path: string): Map<string, string>
+      317-319: countOrphanedAnnotations(): { file: number; symbol: number; }
+      321-323: pruneOrphanedAnnotations(): { file: number; symbol: number; }
+      325-382: getCacheStats(): CacheStats
+  function:
+    385-391: applyPragmas(db: DB): void
+    393-404: openCache(repoRoot: string): CacheDB [exported]
+  variable:
+    21-21: "1" [exported]
+  imports:
+    - ../types.js
+    - ./annotations.js
+    - ./meta.js
+    - ./schema.js
+    - better-sqlite3
+    - node:fs
+    - node:path
+
+src/cache/meta.ts [1-60]
+  type:
+    3-7: CacheMeta = {
+  createdAt: string | null;
+  lastUpdatedAt: string | null;
+  extractorVersion: string | null;
+} [exported]
+    8-8: DB = Database.Database
+  function:
+    10-15: getMeta(db: DB, key: string): string [exported]
+    17-21: setMeta(db: DB, key: string, value: string): void [exported]
+    23-29: readMeta(db: DB): CacheMeta [exported]
+    31-53: ensureMeta(db: DB, extractorVersion: string): CacheMeta 
+[exported]
+    55-59: updateLastUpdated(db: DB): string [exported]
+  imports:
+    - better-sqlite3
+
+src/cache/schema.ts [1-131]
+  type:
+    4-4: DB = Database.Database
+  function:
+    105-130: migrate(db: DB): void [exported]
+  variable:
+    3-3: 1 [exported]
+    6-103: MIGRATION_1
+  imports:
+    - better-sqlite3
+
+src/cli.ts [1-407]
+  type:
+    26-34: ParsedTarget = {
+  path: string;
+  symbol?: {
+    name: string;
+    kind: string;
+    parentName?: string | null;
+    signature?: string | null;
+  };
+}
+  function:
+    36-42: normalizeAnnotationPath(repoRoot: string, inputPath: string): 
+string
+    44-83: parseAnnotationTarget(raw: string): ParsedTarget
+    85-95: formatBytes(bytes: number): string
+    97-132: renderCacheStats(stats: CacheStats): string
+    399-401: async main(): any
+  variable:
+    11-24: any
+    134-397: any
+  imports:
+    - ./cache/db.js
+    - ./render.js
+    - ./sourceMap.js
+    - ./types.js
+    - node:path
+    - yargs
+    - yargs/helpers
+
+src/fileDiscovery.ts [1-67]
+  type:
+    6-10: DiscoveryOptions = {
+  repoRoot: string;
+  patterns?: string[];
+  ignore?: string[];
+} [exported]
+  function:
+    14-32: discoverFiles(opts: DiscoveryOptions): {} [exported]
+    34-48: discoverAllFiles(repoRoot: string): {}
+    50-66: walkDirectory(dir: string, root: string): {}
+  variable:
+    12-12: { readonly dot: true; }
+  imports:
+    - micromatch
+    - node:child_process
+    - node:fs
+    - node:path
+
+src/index.ts [1-26]
+
+src/languages.ts [1-34]
+  function:
+    22-25: detectLanguage(filePath: string): Language [exported]
+    27-29: canExtractSymbols(language: Language): boolean [exported]
+    31-33: canExtractStructure(language: Language): boolean [exported]
+  variable:
+    4-20: Record<string, Language>
+  imports:
+    - ./types.js
+    - node:path
+
+src/markdown.ts [1-51]
+  type:
+    3-6: MarkdownStructure = {
+  headings: MarkdownHeading[];
+  codeBlocks: MarkdownCodeBlock[];
+} [exported]
+  function:
+    8-50: extractMarkdownStructure(content: string): MarkdownStructure 
+[exported]
+  imports:
+    - ./types.js
+
+src/render.ts [1-260]
+  function:
+    19-43: organizeSymbols(symbols: SymbolEntry[]): {}
+    45-75: groupSymbolsByKind(symbols: SymbolEntry[]): Array<[any, {}]>
+    77-85: formatSymbolLabel(sym: SymbolEntry, level: DetailLevel): string
+    87-91: compactComment(comment: string, maxLen?: number): string
+    93-125: renderSymbol(sym: SymbolEntry, level: DetailLevel, opts: 
+SourceMapOptions, indent: string): {}
+    127-182: renderFileEntry(file: FileEntry, opts: SourceMapOptions): 
+string [exported]
+    184-223: renderText(result: SourceMapResult, opts: SourceMapOptions): 
+string [exported]
+    225-259: renderJson(result: SourceMapResult): string [exported]
+  variable:
+    10-17: SymbolKind[]
+  imports:
+    - ./types.js
+
+src/sourceMap.ts [1-560]
+  type:
+    152-158: Extracted = {
+  file: FileRow;
+  symbols: SymbolRow[];
+  imports: ImportRow[];
+  headings: HeadingRow[];
+  codeBlocks: CodeBlockRow[];
+}
+  function:
+    66-69: reduceDetailLevel(level: DetailLevel): DetailLevel
+    71-74: estimateFileTokens(entry: FileEntry, opts: SourceMapOptions): 
+number
+    76-105: fitToBudget(entries: FileEntry[], opts: SourceMapOptions, 
+budget: number): {}
+    107-115: normalizeScopePatterns(patterns: string[] | undefined, ignore: 
+string[] | undefined): { patterns: {}; ignore: {}; }
+    117-131: isInScope(relPath: string, patterns: string[], ignore: 
+string[]): boolean
+    133-146: filterCachedByScope(cached: Map<string, CachedFile>, patterns: 
+string[], ignore: string[]): Map<string, CachedFile>
+    148-150: hashBuffer(buf: Buffer): string
+    160-238: extractFileForCache(file: DiscoveredFile): Extracted
+    240-338: buildEntriesFromCache(db: CacheDB, filePaths: string[], opts: 
+SourceMapOptions): {}
+    340-402: updateCache(db: CacheDB, discovered: DiscoveredFile[], changes:
+ FileChange[], touches: FileTouch[]): void
+    404-455: extractFileEntryNoCache(repoRoot: string, relPath: string, 
+opts: SourceMapOptions): any
+    457-489: generateSourceMapNoCache(opts: SourceMapOptions): 
+SourceMapResult
+    491-559: generateSourceMap(options: SourceMapOptions): SourceMapResult 
+[exported]
+  variable:
+    44-54: Partial<SourceMapOptions>
+    56-62: DetailLevel[]
+    64-64: { readonly dot: true; }
+  imports:
+    - ./cache/annotations.js
+    - ./cache/changes.js
+    - ./cache/db.js
+    - ./fileDiscovery.js
+    - ./languages.js
+    - ./markdown.js
+    - ./render.js
+    - ./stats.js
+    - ./symbols.js
+    - ./types.js
+    - micromatch
+    - node:crypto
+    - node:fs
+    - node:path
+
+src/stats.ts [1-31]
+  [note: Computes project statistics]
+  function:
+    3-30: computeStats(files: FileEntry[]): ProjectStats [exported]
+      [note: Main stats aggregation function]
+  imports:
+    - ./types.js
+
+src/symbols.ts [1-559]
+  function:
+    25-42: getProject(): Project
+    44-46: cleanupSignature(sig: string): string
+    48-71: extractJsDoc(node: Node, includeComments: boolean): string
+    73-138: getFunctionSignature(node:
+    | FunctionDeclaration
+    | MethodDeclaration
+    | ConstructorDeclaration
+    | GetAccessorDeclaration
+    | SetAccessorDeclaration
+    | ArrowFunction
+    | FunctionExpression): string
+    140-171: getVariableSignature(varDecl: VariableDeclaration): string
+    173-184: getTypeSignature(node: TypeAliasDeclaration): string
+    186-198: getInterfaceSignature(node: InterfaceDeclaration): string
+    200-215: getClassSignature(node: ClassDeclaration): string
+    217-223: getEnumSignature(node: EnumDeclaration): string
+    225-231: getPropertySignature(node: PropertyDeclaration): string
+    233-236: isVariableExported(varDecl: VariableDeclaration): boolean
+    238-241: isVariableDefaultExport(varDecl: VariableDeclaration): boolean
+    243-249: isVariableAsync(varDecl: VariableDeclaration): boolean
+    251-463: extractSymbols(sourceFile: SourceFile, opts: { includeComments:
+ boolean }): {}
+    465-501: collectExportNames(sourceFile: SourceFile): { exportedNames: 
+Set<string>; defaultNames: Set<string>; }
+    503-518: applyExportFlags(symbols: SymbolEntry[], exportedNames: 
+Set<string>, defaultNames: Set<string>): void
+    520-533: extractImports(sourceFile: SourceFile): {}
+    535-554: extractFileSymbols(filePath: string, content: string, opts?: { 
+includeComments?: boolean }): { symbols: {}; imports: {}; } [exported]
+    556-558: clearProjectCache(): void [exported]
+  variable:
+    22-22: Project | null
+    23-23: number
+  imports:
+    - ./types.js
+    - ts-morph
+
+src/types.ts [1-109]
+  type:
+    1-5: Language = | "typescript"
+  | "javascript"
+  | "markdown"
+  | "other" [exported]
+    7-19: SymbolKind = | "function"
+  | "class"
+  | "interface"
+  | "type"
+  | "variable"
+  | "enum"
+  | "enum_member"
+  | "method"
+  | "property"
+  | "constructor"
+  | "getter"
+  | "setter" [exported]
+    21-36: SymbolEntry = {
+  name: string;
+  kind: SymbolKind;
+  signature: string;
+  startLine: number;
+  endLine: number;
+  exported: boolean;
+  isDefault: boolean;
+  isAsync: boolean;
+  isStatic: boolean;
+  isAbstract: boo... [exported]
+    38-42: MarkdownHeading = {
+  level: number;
+  text: string;
+  line: number;
+} [exported]
+    44-48: MarkdownCodeBlock = {
+  language: string | null;
+  startLine: number;
+  endLine: number;
+} [exported]
+    50-55: DetailLevel = | "full"
+  | "standard"
+  | "compact"
+  | "minimal"
+  | "outline" [exported]
+    57-69: FileEntry = {
+  path: string;
+  language: Language;
+  startLine: number;
+  endLine: number;
+  annotation?: string;
+  detailLevel: DetailLevel;
+  symbols: SymbolEntry[];
+  headings?: MarkdownHeading[];
+  codeBlock... [exported]
+    71-76: ProjectStats = {
+  totalFiles: number;
+  totalSymbols: number;
+  byLanguage: Record<string, number>;
+  bySymbolKind: Record<string, number>;
+} [exported]
+    78-83: SourceMapResult = {
+  repoRoot: string;
+  stats: ProjectStats | null;
+  files: FileEntry[];
+  totalTokens: number;
+} [exported]
+    85-108: SourceMapOptions = {
+  // Target
+  repoRoot: string;
+  patterns?: string[];
+  ignore?: string[];
+
+  // Content control
+  includeComments: boolean;
+  includeImports: boolean;
+  includeHeadings: boolean;
+  includeCodeBloc... [exported]
+
+tests/annotations.test.ts [1-74]
+  function:
+    8-18: createTempProject(): string
+  imports:
+    - ../src/cache/db.js
+    - ../src/sourceMap.js
+    - node:fs
+    - node:os
+    - node:path
+    - vitest
+
+tests/changes.test.ts [1-119]
+  function:
+    12-14: createTempDir(): string
+  imports:
+    - ../src/cache/changes.js
+    - ../src/cache/db.js
+    - node:fs
+    - node:os
+    - node:path
+    - vitest
+
+tests/languages.test.ts [1-26]
+  imports:
+    - ../src/languages.js
+    - vitest
+
+tests/markdown.test.ts [1-50]
+  imports:
+    - ../src/markdown.js
+    - vitest
+
+tests/sourceMap.test.ts [1-86]
+  function:
+    7-24: createTempProject(): string
+  imports:
+    - ../src/sourceMap.js
+    - node:fs
+    - node:os
+    - node:path
+    - vitest
+
+tests/symbols.test.ts [1-330]
+  variable:
+    4-4: 15000
+  imports:
+    - ../src/symbols.js
+    - vitest
+
+tsconfig.json [1-20]
+
+vitest.config.ts [1-8]
+  imports:
+    - vitest/config
+
+---
+Files: 30
+Estimated tokens: 4,202 (codebase: ~54,141)
+</context>
+
+Without reading any files, explain what this application does. 
+
+● Codemap Overview
+
+  Codemap is a CLI tool that generates structured source code maps/indexes of codebases, designed primarily for use with AI agents and LLMs.
+
+  Core Functionality
+
+  1. Code Indexing: Scans a repository and extracts metadata about files, including:
+    - Symbols (functions, classes, types, interfaces, methods, variables, etc.)
+    - Import statements
+    - Markdown structure (headings, code blocks)
+    - Line ranges and signatures
+  2. Multi-Language Support: Handles TypeScript, JavaScript, and Markdown files, with basic support for other file types.
+  3. Output Formats: Generates output in text or JSON format, suitable for feeding into AI systems as context.
+  4. Token Budget Management: Supports configurable detail levels (full, standard, compact, minimal, outline) and token budgets to control output size—critical for fitting context into LLM token limits.
+  5. Caching System: Uses SQLite (via better-sqlite3) to cache extracted file data, detecting changes via file hashes/mtimes to avoid re-parsing unchanged files.
+  6. Annotations: Allows users to add notes/annotations to files and symbols that persist in the cache and appear in the output.
+
+  Typical Use Case
+
+  An AI agent working on a codebase can run codemap to get a structured overview of the project—understanding what files exist, what symbols are defined where, and how the code is organized—without needing to read every file in full. This provides efficient context for code navigation, modification, and understanding.
+
+  Architecture
+
+  - src/cli.ts - CLI entry point using yargs
+  - src/sourceMap.ts - Core logic for generating the source map
+  - src/symbols.ts - TypeScript/JavaScript symbol extraction using ts-morph
+  - src/cache/ - SQLite-based caching layer
+  - src/render.ts - Output formatting (text/JSON)
+  - src/fileDiscovery.ts - File discovery with glob patterns
+
+
+

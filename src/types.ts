@@ -31,6 +31,7 @@ export type SymbolEntry = {
   isAbstract: boolean;
   parentName?: string;
   comment?: string;
+  annotation?: string;
   children?: SymbolEntry[];
 };
 
@@ -58,6 +59,7 @@ export type FileEntry = {
   language: Language;
   startLine: number;
   endLine: number;
+  annotation?: string;
   detailLevel: DetailLevel;
   symbols: SymbolEntry[];
   headings?: MarkdownHeading[];
@@ -78,6 +80,7 @@ export type SourceMapResult = {
   stats: ProjectStats | null;
   files: FileEntry[];
   totalTokens: number;
+  codebaseTokens?: number;
 };
 
 export type SourceMapOptions = {
@@ -96,6 +99,10 @@ export type SourceMapOptions = {
 
   // Budget
   tokenBudget?: number;
+
+  // Cache
+  useCache?: boolean;
+  forceRefresh?: boolean;
 
   // Output
   output: "text" | "json";
