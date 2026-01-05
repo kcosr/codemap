@@ -14,7 +14,7 @@ const MM_OPTS = { dot: true } as const;
 export function discoverFiles(opts: DiscoveryOptions): string[] {
   const { repoRoot, patterns = [], ignore = [] } = opts;
 
-  let files = discoverAllFiles(repoRoot);
+  let files = discoverAllFiles(repoRoot).map(normalizeRepoPath);
 
   if (patterns.length > 0) {
     files = files.filter((f) =>
@@ -29,6 +29,10 @@ export function discoverFiles(opts: DiscoveryOptions): string[] {
   }
 
   return files.sort();
+}
+
+function normalizeRepoPath(filePath: string): string {
+  return filePath.split(path.sep).join("/");
 }
 
 function discoverAllFiles(repoRoot: string): string[] {

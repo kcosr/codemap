@@ -1,6 +1,6 @@
 import Database from "better-sqlite3";
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 type DB = Database.Database;
 
 const MIGRATION_1 = `
@@ -102,6 +102,33 @@ CREATE INDEX IF NOT EXISTS idx_symbol_annotations_path ON symbol_annotations(pat
 CREATE INDEX IF NOT EXISTS idx_file_annotations_path ON file_annotations(path);
 `;
 
+const MIGRATION_2 = `
+CREATE TABLE IF NOT EXISTS resolved_imports (
+  id INTEGER PRIMARY KEY,
+  importer_path TEXT NOT NULL,
+  source TEXT NOT NULL,
+  resolved_path TEXT,
+  imported_names TEXT,
+  kind TEXT NOT NULL,
+  is_type_only INTEGER NOT NULL DEFAULT 0,
+  is_external INTEGER NOT NULL DEFAULT 0,
+  is_builtin INTEGER NOT NULL DEFAULT 0,
+  package_name TEXT,
+  resolution_method TEXT,
+  unresolved_reason TEXT,
+  span_start INTEGER,
+  span_end INTEGER,
+  FOREIGN KEY (importer_path) REFERENCES files(path) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_resolved_imports_importer ON resolved_imports(importer_path);
+CREATE INDEX IF NOT EXISTS idx_resolved_imports_resolved ON resolved_imports(resolved_path);
+CREATE INDEX IF NOT EXISTS idx_resolved_imports_external ON resolved_imports(is_external);
+CREATE INDEX IF NOT EXISTS idx_resolved_imports_package ON resolved_imports(package_name);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_resolved_imports_stmt
+  ON resolved_imports(importer_path, kind, source, span_start, span_end);
+`;
+
 export function migrate(db: DB): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -123,6 +150,12 @@ export function migrate(db: DB): void {
       db.prepare(
         "INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)",
       ).run(1, new Date().toISOString());
+    }
+    if (currentVersion < 2) {
+      db.exec(MIGRATION_2);
+      db.prepare(
+        "INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)",
+      ).run(2, new Date().toISOString());
     }
   });
 

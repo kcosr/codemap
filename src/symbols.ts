@@ -17,7 +17,8 @@ import {
   PropertyDeclaration,
   ts,
 } from "ts-morph";
-import type { SymbolEntry } from "./types.js";
+import type { ImportSpec, SymbolEntry } from "./types.js";
+import { extractImportSpecs } from "./deps/extract-imports.js";
 
 let project: Project | null = null;
 let virtualCounter = 0;
@@ -517,26 +518,31 @@ function applyExportFlags(
   }
 }
 
-function extractImports(sourceFile: SourceFile): string[] {
-  const modules: string[] = [];
-  const seen = new Set<string>();
+type ExtractedSymbols = {
+  symbols: SymbolEntry[];
+  imports: string[];
+  importSpecs: ImportSpec[];
+};
 
-  for (const importDecl of sourceFile.getImportDeclarations()) {
-    const moduleSpec = importDecl.getModuleSpecifierValue();
-    if (!seen.has(moduleSpec)) {
-      seen.add(moduleSpec);
-      modules.push(moduleSpec);
-    }
+function buildImportList(specs: ImportSpec[]): string[] {
+  const seen = new Set<string>();
+  const modules: string[] = [];
+
+  for (const spec of specs) {
+    if (spec.isLiteral === false) continue;
+    if (seen.has(spec.source)) continue;
+    seen.add(spec.source);
+    modules.push(spec.source);
   }
 
   return modules;
 }
 
-export function extractFileSymbols(
+export function extractFileSymbolsDetailed(
   filePath: string,
   content: string,
   opts?: { includeComments?: boolean },
-): { symbols: SymbolEntry[]; imports: string[] } {
+): ExtractedSymbols {
   const proj = getProject();
   const vpath = `virtual_${virtualCounter++}_${filePath.replace(/\\/g, "/")}`;
   const sourceFile = proj.createSourceFile(vpath, content, { overwrite: true });
@@ -546,11 +552,21 @@ export function extractFileSymbols(
     const rawSymbols = extractSymbols(sourceFile, { includeComments });
     const { exportedNames, defaultNames } = collectExportNames(sourceFile);
     applyExportFlags(rawSymbols, exportedNames, defaultNames);
-    const imports = extractImports(sourceFile);
-    return { symbols: rawSymbols, imports };
+    const importSpecs = extractImportSpecs(sourceFile);
+    const imports = buildImportList(importSpecs);
+    return { symbols: rawSymbols, imports, importSpecs };
   } finally {
     proj.removeSourceFile(sourceFile);
   }
+}
+
+export function extractFileSymbols(
+  filePath: string,
+  content: string,
+  opts?: { includeComments?: boolean },
+): { symbols: SymbolEntry[]; imports: string[] } {
+  const extracted = extractFileSymbolsDetailed(filePath, content, opts);
+  return { symbols: extracted.symbols, imports: extracted.imports };
 }
 
 export function clearProjectCache(): void {
