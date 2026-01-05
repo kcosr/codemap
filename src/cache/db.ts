@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
-import type { Language, SymbolKind } from "../types.js";
+import type { Language, ResolvedImport, SymbolKind } from "../types.js";
 import { migrate } from "./schema.js";
 import {
   getFileAnnotation,
@@ -16,9 +16,17 @@ import {
   countOrphanedAnnotations,
   pruneOrphanedAnnotations,
 } from "./annotations.js";
+import {
+  insertResolvedImports,
+  getResolvedImports,
+  getDependencies,
+  getDependents,
+  listExternalPackages,
+  type ResolvedImportRow,
+} from "./resolved-imports.js";
 import { ensureMeta, readMeta, setMeta, updateLastUpdated } from "./meta.js";
 
-export const EXTRACTOR_VERSION = "1";
+export const EXTRACTOR_VERSION = "2";
 type DB = Database.Database;
 
 export type CachedFile = {
@@ -59,6 +67,8 @@ export type ImportRow = {
   path: string;
   source: string;
 };
+
+export type ResolvedImportEntry = ResolvedImportRow;
 
 export type HeadingRow = {
   path: string;
@@ -204,6 +214,10 @@ export class CacheDB {
     }
   }
 
+  insertResolvedImports(path: string, imports: ResolvedImport[]): void {
+    insertResolvedImports(this.db, path, imports);
+  }
+
   insertHeadings(path: string, headings: HeadingRow[]): void {
     if (headings.length === 0) return;
     const stmt = this.db.prepare(
@@ -237,6 +251,22 @@ export class CacheDB {
       .prepare("SELECT source FROM imports WHERE path = ? ORDER BY source")
       .all(path) as Array<{ source: string }>;
     return rows.map((row) => row.source);
+  }
+
+  getResolvedImports(path: string): ResolvedImportEntry[] {
+    return getResolvedImports(this.db, path);
+  }
+
+  getDependencies(path: string): string[] {
+    return getDependencies(this.db, path);
+  }
+
+  getDependents(path: string): string[] {
+    return getDependents(this.db, path);
+  }
+
+  listExternalPackages(): string[] {
+    return listExternalPackages(this.db);
   }
 
   getHeadings(path: string): HeadingRow[] {

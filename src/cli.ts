@@ -2,11 +2,17 @@
 import path from "node:path";
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
-import { generateSourceMap } from "./sourceMap.js";
+import { generateSourceMap, refreshCache } from "./sourceMap.js";
 import { renderText, renderJson } from "./render.js";
 import { openCache } from "./cache/db.js";
 import type { CacheStats } from "./cache/db.js";
 import type { SymbolKind } from "./types.js";
+import {
+  buildDependencyTree,
+  buildReverseDependencyTree,
+  findCircularDependencies,
+  renderDependencyTree,
+} from "./deps/tree.js";
 
 const SYMBOL_KINDS = new Set<SymbolKind>([
   "function",
@@ -33,12 +39,20 @@ type ParsedTarget = {
   };
 };
 
-function normalizeAnnotationPath(repoRoot: string, inputPath: string): string {
+function toPosixPath(inputPath: string): string {
+  return inputPath.split(path.sep).join("/");
+}
+
+function normalizeRepoPath(repoRoot: string, inputPath: string): string {
   const resolved = path.resolve(repoRoot, inputPath);
   if (resolved.startsWith(repoRoot + path.sep)) {
-    return path.relative(repoRoot, resolved);
+    return toPosixPath(path.relative(repoRoot, resolved));
   }
-  return inputPath;
+  return toPosixPath(inputPath);
+}
+
+function normalizeAnnotationPath(repoRoot: string, inputPath: string): string {
+  return normalizeRepoPath(repoRoot, inputPath);
 }
 
 function parseAnnotationTarget(raw: string): ParsedTarget {
@@ -148,6 +162,162 @@ const cli = yargs(hideBin(process.argv))
     global: true,
   })
   .command(
+    "deps [target]",
+    "Show dependency tree",
+    (y) =>
+      y
+        .positional("target", {
+          describe: "File path",
+          type: "string",
+        })
+        .option("reverse", {
+          type: "boolean",
+          default: false,
+          describe: "Show reverse dependencies",
+        })
+        .option("depth", {
+          type: "number",
+          default: 10,
+          describe: "Max depth",
+        })
+        .option("external", {
+          type: "boolean",
+          default: false,
+          describe: "List external package dependencies",
+        })
+        .option("circular", {
+          type: "boolean",
+          default: false,
+          describe: "Find circular dependencies",
+        })
+        .option("output", {
+          alias: "o",
+          type: "string",
+          choices: ["text", "json"] as const,
+          default: "text",
+          describe: "Output format",
+        })
+        .option("tsconfig", {
+          type: "string",
+          describe: "Path to tsconfig.json or jsconfig.json",
+        })
+        .option("no-tsconfig", {
+          type: "boolean",
+          default: false,
+          describe: "Disable tsconfig-based resolution",
+        }),
+    (argv) => {
+      const repoRoot = argv.dir as string;
+      const output = argv.output === "json" ? "json" : "text";
+
+      const refresh = refreshCache({
+        repoRoot,
+        patterns: [],
+        ignore: argv.ignore as string[] | undefined,
+        includeComments: true,
+        includeImports: true,
+        includeHeadings: false,
+        includeCodeBlocks: false,
+        includeStats: false,
+        exportedOnly: false,
+        output: "text",
+        useCache: true,
+        tsconfigPath: argv.tsconfig
+          ? path.resolve(repoRoot, argv.tsconfig as string)
+          : undefined,
+        useTsconfig: !argv["no-tsconfig"],
+      });
+
+      const { db } = refresh;
+
+      const wantsExternal = argv.external;
+      const wantsCircular = argv.circular;
+
+      if (wantsExternal || wantsCircular) {
+        const externalPackages = wantsExternal ? db.listExternalPackages() : [];
+        const cycles = wantsCircular ? findCircularDependencies(db) : [];
+        db.close();
+
+        if (output === "json") {
+          console.log(
+            JSON.stringify(
+              {
+                externalPackages: wantsExternal ? externalPackages : undefined,
+                cycles: wantsCircular ? cycles : undefined,
+              },
+              null,
+              2,
+            ),
+          );
+          return;
+        }
+
+        if (wantsExternal) {
+          if (externalPackages.length === 0) {
+            console.log("No external dependencies found.");
+          } else {
+            console.log("External packages:");
+            for (const pkg of externalPackages) {
+              console.log(`- ${pkg}`);
+            }
+          }
+        }
+
+        if (wantsCircular) {
+          if (cycles.length === 0) {
+            console.log("No circular dependencies found.");
+          } else {
+            console.log("Circular dependencies:");
+            for (const cycle of cycles) {
+              console.log(`- ${cycle.join(" -> ")}`);
+            }
+          }
+        }
+
+        return;
+      }
+
+      const target = argv.target as string | undefined;
+      if (!target) {
+        db.close();
+        throw new Error("Target path is required unless --external or --circular is set.");
+      }
+
+      const normalizedPath = normalizeRepoPath(repoRoot, target);
+      const fileRow = db.getFile(normalizedPath);
+      if (!fileRow) {
+        db.close();
+        throw new Error(`File not found in cache: ${normalizedPath}`);
+      }
+
+      const maxDepth = Number.isFinite(argv.depth)
+        ? (argv.depth as number)
+        : 10;
+      const tree = argv.reverse
+        ? buildReverseDependencyTree(db, normalizedPath, maxDepth)
+        : buildDependencyTree(db, normalizedPath, maxDepth);
+
+      db.close();
+
+      if (output === "json") {
+        console.log(
+          JSON.stringify(
+            {
+              root: normalizedPath,
+              reverse: argv.reverse,
+              depth: maxDepth,
+              tree,
+            },
+            null,
+            2,
+          ),
+        );
+      } else {
+        console.log(renderDependencyTree(tree));
+      }
+    },
+  )
+  .command(
     "$0 [patterns...]",
     "Generate code map",
     (y) =>
@@ -212,6 +382,15 @@ const cli = yargs(hideBin(process.argv))
           type: "boolean",
           default: false,
           describe: "Remove orphaned annotations",
+        })
+        .option("tsconfig", {
+          type: "string",
+          describe: "Path to tsconfig.json or jsconfig.json",
+        })
+        .option("no-tsconfig", {
+          type: "boolean",
+          default: false,
+          describe: "Disable tsconfig-based resolution",
         }),
     (argv) => {
       const repoRoot = argv.dir as string;
@@ -250,6 +429,10 @@ const cli = yargs(hideBin(process.argv))
         output,
         forceRefresh: argv["no-cache"],
         useCache: true,
+        tsconfigPath: argv.tsconfig
+          ? path.resolve(repoRoot, argv.tsconfig as string)
+          : undefined,
+        useTsconfig: !argv["no-tsconfig"],
       } as const;
 
       const result = generateSourceMap(opts);

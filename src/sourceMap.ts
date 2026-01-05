@@ -10,6 +10,7 @@ import type {
   SymbolEntry,
   MarkdownHeading,
   MarkdownCodeBlock,
+  ResolvedImport,
 } from "./types.js";
 import { discoverFiles } from "./fileDiscovery.js";
 import {
@@ -17,7 +18,7 @@ import {
   canExtractSymbols,
   canExtractStructure,
 } from "./languages.js";
-import { extractFileSymbols } from "./symbols.js";
+import { extractFileSymbols, extractFileSymbolsDetailed } from "./symbols.js";
 import { extractMarkdownStructure } from "./markdown.js";
 import { computeStats } from "./stats.js";
 import { renderFileEntry } from "./render.js";
@@ -32,6 +33,11 @@ import {
   type CodeBlockRow,
   type CachedFile,
 } from "./cache/db.js";
+import {
+  createResolverContext,
+  resolveImports,
+  type ResolverContext,
+} from "./deps/resolver.js";
 import {
   detectChanges,
   statDiscoveredFiles,
@@ -51,6 +57,7 @@ const DEFAULT_OPTIONS: Partial<SourceMapOptions> = {
   output: "text",
   useCache: true,
   forceRefresh: false,
+  useTsconfig: true,
 };
 
 const DETAIL_LEVELS: DetailLevel[] = [
@@ -153,11 +160,15 @@ type Extracted = {
   file: FileRow;
   symbols: SymbolRow[];
   imports: ImportRow[];
+  resolvedImports: ResolvedImport[];
   headings: HeadingRow[];
   codeBlocks: CodeBlockRow[];
 };
 
-function extractFileForCache(file: DiscoveredFile): Extracted | null {
+function extractFileForCache(
+  file: DiscoveredFile,
+  resolverContext: ResolverContext,
+): Extracted | null {
   let buf: Buffer;
   let content: string;
   let lineCount: number;
@@ -186,11 +197,12 @@ function extractFileForCache(file: DiscoveredFile): Extracted | null {
 
   let symbols: SymbolRow[] = [];
   let imports: ImportRow[] = [];
+  let resolvedImports: ResolvedImport[] = [];
   let headings: HeadingRow[] = [];
   let codeBlocks: CodeBlockRow[] = [];
 
   if (canExtractSymbols(language)) {
-    const extracted = extractFileSymbols(file.path, content, {
+    const extracted = extractFileSymbolsDetailed(file.path, content, {
       includeComments: true,
     });
     symbols = extracted.symbols.map((sym) => ({
@@ -212,6 +224,11 @@ function extractFileForCache(file: DiscoveredFile): Extracted | null {
       path: file.path,
       source,
     }));
+    resolvedImports = resolveImports(
+      file.path,
+      extracted.importSpecs,
+      resolverContext,
+    );
   } else if (canExtractStructure(language)) {
     const structure = extractMarkdownStructure(content);
     headings = structure.headings.map((h) => ({
@@ -232,6 +249,7 @@ function extractFileForCache(file: DiscoveredFile): Extracted | null {
     file: fileRow,
     symbols,
     imports,
+    resolvedImports,
     headings,
     codeBlocks,
   };
@@ -342,6 +360,7 @@ function updateCache(
   discovered: DiscoveredFile[],
   changes: FileChange[],
   touches: FileTouch[],
+  resolverContext: ResolverContext,
 ): void {
   if (touches.length > 0) {
     const applyTouches = db.transaction(() => {
@@ -370,7 +389,7 @@ function updateCache(
         extractedByPath.set(change.path, null);
         continue;
       }
-      extractedByPath.set(change.path, extractFileForCache(file));
+      extractedByPath.set(change.path, extractFileForCache(file, resolverContext));
     }
   }
 
@@ -390,6 +409,7 @@ function updateCache(
     db.insertFile(extracted.file);
     db.insertSymbols(change.path, extracted.symbols);
     db.insertImports(change.path, extracted.imports);
+    db.insertResolvedImports(change.path, extracted.resolvedImports);
     db.insertHeadings(change.path, extracted.headings);
     db.insertCodeBlocks(change.path, extracted.codeBlocks);
   });
@@ -489,13 +509,10 @@ function generateSourceMapNoCache(opts: SourceMapOptions): SourceMapResult {
   };
 }
 
-export function generateSourceMap(options: SourceMapOptions): SourceMapResult {
+export function refreshCache(
+  options: SourceMapOptions,
+): { db: CacheDB; filePaths: string[]; opts: SourceMapOptions } {
   const opts = { ...DEFAULT_OPTIONS, ...options } as SourceMapOptions;
-
-  if (opts.useCache === false) {
-    return generateSourceMapNoCache(opts);
-  }
-
   const { repoRoot } = opts;
   const { patterns, ignore } = normalizeScopePatterns(opts.patterns, opts.ignore);
 
@@ -533,7 +550,25 @@ export function generateSourceMap(options: SourceMapOptions): SourceMapResult {
     touches = result.touches;
   }
 
-  updateCache(db, discovered, changes, touches);
+  const fileIndex = new Set(discovered.map((f) => f.path));
+  const resolverContext = createResolverContext(repoRoot, fileIndex, {
+    tsconfigPath: opts.tsconfigPath ?? null,
+    useTsconfig: opts.useTsconfig,
+  });
+
+  updateCache(db, discovered, changes, touches, resolverContext);
+
+  return { db, filePaths, opts };
+}
+
+export function generateSourceMap(options: SourceMapOptions): SourceMapResult {
+  const opts = { ...DEFAULT_OPTIONS, ...options } as SourceMapOptions;
+
+  if (opts.useCache === false) {
+    return generateSourceMapNoCache(opts);
+  }
+
+  const { db, filePaths } = refreshCache(opts);
 
   const entries = buildEntriesFromCache(db, filePaths, opts);
 
@@ -553,7 +588,7 @@ export function generateSourceMap(options: SourceMapOptions): SourceMapResult {
   db.close();
 
   return {
-    repoRoot,
+    repoRoot: opts.repoRoot,
     stats,
     files: finalEntries,
     totalTokens,

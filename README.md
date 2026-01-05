@@ -139,6 +139,63 @@ Options:
   --no-cache             Force full re-extraction (ignore cache)
   --cache-stats          Show cache statistics
   --prune-annotations    Remove orphaned annotations
+  --tsconfig             Path to tsconfig.json or jsconfig.json
+  --no-tsconfig          Disable tsconfig-based resolution
+```
+
+### Dependency Trees
+
+The `deps` command analyzes import/export statements to build a dependency graph. It resolves:
+
+- Relative imports (`./utils`, `../lib/db`)
+- TypeScript path mappings (`@lib/utils` via `tsconfig.json` paths)
+- Node.js builtins (`node:fs`, `path`)
+- External packages (`react`, `lodash`)
+- Dynamic imports and require() calls
+
+```bash
+# Show dependency tree for a file
+codemap deps src/index.ts
+
+# Reverse dependencies (who imports this file)
+codemap deps --reverse src/db.ts
+
+# Limit depth
+codemap deps --depth 3 src/cli.ts
+
+# List external packages used in the project
+codemap deps --external
+
+# Find circular dependencies
+codemap deps --circular
+
+# Combine flags
+codemap deps --external --circular
+
+# JSON output
+codemap deps src/cli.ts -o json
+```
+
+**Example output:**
+
+```
+src/cli.ts
+  - src/cache/db.ts
+    - src/types.ts
+    - [external] better-sqlite3
+    - [builtin] fs
+  - src/render.ts
+    - src/types.ts
+  - [builtin] path
+  - [external] yargs
+```
+
+Circular dependencies are marked:
+```
+src/a.ts
+  - src/b.ts
+    - src/c.ts
+      - src/a.ts (circular ref)
 ```
 
 ## Caching
@@ -364,6 +421,59 @@ import type {
   SymbolKind,
   DetailLevel,
 } from "codemap";
+```
+
+### Dependency Graph API
+
+For programmatic access to dependency information:
+
+```typescript
+import { 
+  openCache,
+  buildDependencyTree,
+  buildReverseDependencyTree,
+  findCircularDependencies,
+  renderDependencyTree 
+} from "codemap";
+import type { CacheDB, DependencyTreeNode } from "codemap";
+
+// Open the cache (creates/updates as needed)
+const db = openCache(process.cwd());
+
+// Get direct dependencies of a file
+const deps = db.getDependencies("src/index.ts");
+// => ["src/utils.ts", "src/config.ts"]
+
+// Get files that import a given file
+const dependents = db.getDependents("src/utils.ts");
+// => ["src/index.ts", "src/cli.ts"]
+
+// Get resolved import details
+const imports = db.getResolvedImports("src/index.ts");
+for (const imp of imports) {
+  console.log(imp.source);        // "./utils" or "react"
+  console.log(imp.resolved_path); // "src/utils.ts" or null (external)
+  console.log(imp.is_external);   // 0 or 1
+  console.log(imp.package_name);  // "react" for externals
+  console.log(imp.kind);          // "import", "export_from", "dynamic_import", "require"
+}
+
+// List all external packages
+const external = db.listExternalPackages();
+// => ["react", "lodash", "express"]
+
+// Build dependency trees
+const tree = buildDependencyTree(db, "src/index.ts", 5); // max depth 5
+const reverse = buildReverseDependencyTree(db, "src/utils.ts", 3);
+
+// Detect circular dependencies
+const cycles = findCircularDependencies(db);
+// => [["src/a.ts", "src/b.ts", "src/c.ts", "src/a.ts"]]
+
+// Render tree as text
+console.log(renderDependencyTree(tree));
+
+db.close();
 ```
 
 ## Tips

@@ -47,6 +47,43 @@ export type MarkdownCodeBlock = {
   endLine: number;
 };
 
+export type ImportKind =
+  | "import"
+  | "export_from"
+  | "dynamic_import"
+  | "require"
+  | "side_effect";
+
+export type ResolutionMethod =
+  | "relative"
+  | "paths"
+  | "baseUrl"
+  | "ts"
+  | "node";
+
+export type ImportSpec = {
+  source: string;
+  importedNames: string[];
+  kind: ImportKind;
+  isTypeOnly: boolean;
+  span?: { start: number; end: number };
+  isLiteral?: boolean;
+};
+
+export type ResolvedImport = {
+  source: string;
+  resolvedPath: string | null;
+  importedNames: string[];
+  kind: ImportKind;
+  isTypeOnly: boolean;
+  isExternal: boolean;
+  isBuiltin: boolean;
+  packageName?: string;
+  resolutionMethod?: ResolutionMethod;
+  unresolvedReason?: string;
+  span?: { start: number; end: number };
+};
+
 export type DetailLevel =
   | "full"
   | "standard"
@@ -103,6 +140,8 @@ export type SourceMapOptions = {
   // Cache
   useCache?: boolean;
   forceRefresh?: boolean;
+  tsconfigPath?: string;
+  useTsconfig?: boolean;
 
   // Output
   output: "text" | "json";
