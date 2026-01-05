@@ -519,6 +519,12 @@ echo "Add rate limiting to the API endpoints." >> prompt.md
 codex "$(cat prompt.md)"
 ```
 
+## Roadmap
+
+### Dependency Analysis
+- [ ] Support glob patterns in `deps` command (`codemap deps "src/**/*.ts"`)
+- [ ] Support `deps` with no argument to show all files' direct dependencies
+
 ## License
 
 MIT
