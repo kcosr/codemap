@@ -142,7 +142,6 @@ Options:
   --max-refs             Max references per symbol in output
   --force-refs           Force re-extraction of references
   --no-cache             Force full re-extraction (ignore cache)
-  --cache-stats          Show cache statistics
   --tsconfig             Path to tsconfig.json or jsconfig.json
   --no-tsconfig          Disable tsconfig-based resolution
 ```
@@ -354,7 +353,6 @@ Codemap maintains a persistent cache at `.codemap/cache.db` inside each repo. Ev
 ```bash
 # View cache statistics
 codemap cache
-codemap --cache-stats  # shorthand on main command
 
 # Clear cache (keeps annotations)
 codemap cache clear

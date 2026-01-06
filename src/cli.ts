@@ -632,11 +632,6 @@ const cli = yargs(hideBin(process.argv))
           default: false,
           describe: "Force full re-extraction (ignore cache)",
         })
-        .option("cache-stats", {
-          type: "boolean",
-          default: false,
-          describe: "Show cache statistics",
-        })
         .option("tsconfig", {
           type: "string",
           describe: "Path to tsconfig.json or jsconfig.json",
@@ -648,14 +643,6 @@ const cli = yargs(hideBin(process.argv))
         }),
     (argv) => {
       const repoRoot = argv.dir as string;
-
-      if (argv["cache-stats"]) {
-        const db = openCache(repoRoot);
-        const stats = db.getCacheStats();
-        db.close();
-        console.log(renderCacheStats(stats));
-        return;
-      }
 
       const output = argv.output === "json" ? "json" : "text";
       const refsOptions = resolveRefsOptions(argv as Record<string, unknown>);
