@@ -460,10 +460,17 @@ export class CacheDB {
 
   getCacheStats(): CacheStats {
     const meta = this.getMeta();
-    const stat = fs.existsSync(this.cachePath)
-      ? fs.statSync(this.cachePath)
-      : null;
-    const sizeBytes = stat?.size ?? 0;
+    const cacheFiles = [
+      this.cachePath,
+      `${this.cachePath}-wal`,
+      `${this.cachePath}-shm`,
+    ];
+    let sizeBytes = 0;
+    for (const file of cacheFiles) {
+      if (fs.existsSync(file)) {
+        sizeBytes += fs.statSync(file).size;
+      }
+    }
 
     const fileTotal = (this.db
       .prepare("SELECT COUNT(*) as count FROM files")

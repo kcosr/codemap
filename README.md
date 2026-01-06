@@ -136,6 +136,7 @@ Options:
   --no-headings          Exclude markdown headings
   --no-code-blocks       Exclude markdown code block ranges
   --no-stats             Exclude project statistics header
+  --no-annotations       Exclude annotations from output
   --refs                 Include references (incoming). Use --refs=full for read/write refs
   --refs-in              Include incoming references
   --refs-out             Include outgoing references
@@ -528,6 +529,7 @@ const result = generateSourceMap({
   includeHeadings: true,
   includeCodeBlocks: true,
   includeStats: true,
+  includeAnnotations: true,
   exportedOnly: false,
   tokenBudget: 8000,        // optional
   useCache: true,           // default

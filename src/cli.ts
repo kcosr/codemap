@@ -56,9 +56,11 @@ function toPosixPath(inputPath: string): string {
 }
 
 function normalizeRepoPath(repoRoot: string, inputPath: string): string {
-  const resolved = path.resolve(repoRoot, inputPath);
-  if (resolved.startsWith(repoRoot + path.sep)) {
-    return toPosixPath(path.relative(repoRoot, resolved));
+  const root = path.resolve(repoRoot);
+  const resolved = path.resolve(root, inputPath);
+  const relative = path.relative(root, resolved);
+  if (!relative.startsWith("..") && !path.isAbsolute(relative)) {
+    return toPosixPath(relative || ".");
   }
   return toPosixPath(inputPath);
 }
