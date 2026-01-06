@@ -297,7 +297,7 @@ function renderCacheStats(stats: CacheStats): string {
   lines.push(`  - file: ${stats.annotations.file}`);
   lines.push(`  - symbol: ${stats.annotations.symbol}`);
   lines.push(
-    `  - orphaned: ${stats.annotations.orphaned} (run --prune-annotations to clean)`,
+    `  - orphaned: ${stats.annotations.orphaned} (run 'codemap cache prune' to clean)`,
   );
 
   return lines.join("\n");
@@ -637,11 +637,6 @@ const cli = yargs(hideBin(process.argv))
           default: false,
           describe: "Show cache statistics",
         })
-        .option("prune-annotations", {
-          type: "boolean",
-          default: false,
-          describe: "Remove orphaned annotations",
-        })
         .option("tsconfig", {
           type: "string",
           describe: "Path to tsconfig.json or jsconfig.json",
@@ -659,16 +654,6 @@ const cli = yargs(hideBin(process.argv))
         const stats = db.getCacheStats();
         db.close();
         console.log(renderCacheStats(stats));
-        return;
-      }
-
-      if (argv["prune-annotations"]) {
-        const db = openCache(repoRoot);
-        const result = db.pruneOrphanedAnnotations();
-        db.close();
-        console.log(
-          `Pruned annotations: file ${result.file}, symbol ${result.symbol}`,
-        );
         return;
       }
 
@@ -860,6 +845,45 @@ const cli = yargs(hideBin(process.argv))
           }
           console.log(`- ${target}: ${row.note}`);
         }
+      }
+    },
+  )
+  .command(
+    "cache [action]",
+    "Manage cache (stats, reset, prune)",
+    (y) =>
+      y.positional("action", {
+        describe: "Action: stats (default), reset, prune",
+        type: "string",
+        choices: ["stats", "reset", "prune"],
+        default: "stats",
+      }),
+    (argv) => {
+      const repoRoot = argv.dir as string;
+      const action = argv.action as string;
+      const db = openCache(repoRoot);
+
+      if (action === "stats") {
+        const stats = db.getCacheStats();
+        db.close();
+        console.log(renderCacheStats(stats));
+        return;
+      }
+
+      if (action === "reset") {
+        db.clearFiles();
+        db.close();
+        console.log("Cache cleared (annotations preserved).");
+        return;
+      }
+
+      if (action === "prune") {
+        const result = db.pruneOrphanedAnnotations();
+        db.close();
+        console.log(
+          `Pruned annotations: file ${result.file}, symbol ${result.symbol}`,
+        );
+        return;
       }
     },
   )
