@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import Database from "better-sqlite3";
+import Database, { type Database as DB } from "./sqlite.js";
 import type { Language, ResolvedImport, SymbolKind } from "../types.js";
 import { migrate } from "./schema.js";
 import {
@@ -37,7 +37,6 @@ import type { ReferenceRow, RefStateRow } from "./references.js";
 import { ensureMeta, readMeta, setMeta, updateLastUpdated } from "./meta.js";
 
 export const EXTRACTOR_VERSION = "2";
-type DB = Database.Database;
 
 export type CachedFile = {
   path: string;
@@ -140,8 +139,8 @@ export class CacheDB {
     this.db.close();
   }
 
-  transaction<T extends (...args: any[]) => any>(fn: T): Database.Transaction<T> {
-    return this.db.transaction(fn);
+  transaction<T extends (...args: any[]) => any>(fn: T): T {
+    return this.db.transaction(fn) as T;
   }
 
   getCachedFiles(): Map<string, CachedFile> {
@@ -192,6 +191,11 @@ export class CacheDB {
 
   clearFiles(): void {
     this.db.prepare("DELETE FROM files").run();
+  }
+
+  clearAnnotations(): void {
+    this.db.prepare("DELETE FROM file_annotations").run();
+    this.db.prepare("DELETE FROM symbol_annotations").run();
   }
 
   insertSymbols(path: string, symbols: SymbolRow[]): void {
@@ -456,10 +460,17 @@ export class CacheDB {
 
   getCacheStats(): CacheStats {
     const meta = this.getMeta();
-    const stat = fs.existsSync(this.cachePath)
-      ? fs.statSync(this.cachePath)
-      : null;
-    const sizeBytes = stat?.size ?? 0;
+    const cacheFiles = [
+      this.cachePath,
+      `${this.cachePath}-wal`,
+      `${this.cachePath}-shm`,
+    ];
+    let sizeBytes = 0;
+    for (const file of cacheFiles) {
+      if (fs.existsSync(file)) {
+        sizeBytes += fs.statSync(file).size;
+      }
+    }
 
     const fileTotal = (this.db
       .prepare("SELECT COUNT(*) as count FROM files")

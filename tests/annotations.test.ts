@@ -18,7 +18,7 @@ function createTempProject(): string {
 }
 
 describe("annotations", () => {
-  it("includes file and symbol annotations from cache", () => {
+  it("includes file and symbol annotations by default", () => {
     const dir = createTempProject();
 
     const first = generateSourceMap({
@@ -68,6 +68,210 @@ describe("annotations", () => {
     expect(entry2?.annotation).toBe("Core file note");
     expect(symbol2?.annotation).toBe("Greet note");
 
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("excludes annotations when includeAnnotations is false", () => {
+    const dir = createTempProject();
+
+    // First pass to index
+    generateSourceMap({
+      repoRoot: dir,
+      includeComments: true,
+      includeImports: true,
+      includeHeadings: true,
+      includeCodeBlocks: true,
+      includeStats: false,
+      includeAnnotations: true,
+      exportedOnly: false,
+      output: "text",
+    });
+
+    // Add annotations
+    const db = openCache(dir);
+    db.setFileAnnotation("src/example.ts", "File note");
+    db.setSymbolAnnotation(
+      {
+        path: "src/example.ts",
+        symbolName: "greet",
+        symbolKind: "function",
+        parentName: null,
+        signature: null,
+      },
+      "Symbol note",
+    );
+    db.close();
+
+    // With annotations (default)
+    const withAnnotations = generateSourceMap({
+      repoRoot: dir,
+      includeComments: true,
+      includeImports: true,
+      includeHeadings: true,
+      includeCodeBlocks: true,
+      includeStats: false,
+      includeAnnotations: true,
+      exportedOnly: false,
+      output: "text",
+    });
+
+    const entry1 = withAnnotations.files.find((f) => f.path === "src/example.ts");
+    expect(entry1?.annotation).toBe("File note");
+    expect(entry1?.symbols.find((s) => s.name === "greet")?.annotation).toBe("Symbol note");
+
+    // Without annotations
+    const withoutAnnotations = generateSourceMap({
+      repoRoot: dir,
+      includeComments: true,
+      includeImports: true,
+      includeHeadings: true,
+      includeCodeBlocks: true,
+      includeStats: false,
+      includeAnnotations: false,
+      exportedOnly: false,
+      output: "text",
+    });
+
+    const entry2 = withoutAnnotations.files.find((f) => f.path === "src/example.ts");
+    expect(entry2?.annotation).toBeUndefined();
+    expect(entry2?.symbols.find((s) => s.name === "greet")?.annotation).toBeUndefined();
+
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("validates file exists before saving annotation", () => {
+    const dir = createTempProject();
+
+    // Index the project first
+    generateSourceMap({
+      repoRoot: dir,
+      includeComments: true,
+      includeImports: true,
+      includeHeadings: true,
+      includeCodeBlocks: true,
+      includeStats: false,
+      includeAnnotations: true,
+      exportedOnly: false,
+      output: "text",
+    });
+
+    const db = openCache(dir);
+    
+    // Valid file should work
+    expect(() => {
+      const fileRow = db.getFile("src/example.ts");
+      if (!fileRow) throw new Error("File not found");
+      db.setFileAnnotation("src/example.ts", "Valid note");
+    }).not.toThrow();
+
+    // Check file doesn't exist in cache
+    const nonExistent = db.getFile("nonexistent.ts");
+    expect(nonExistent).toBeUndefined();
+
+    db.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("validates symbol exists before saving annotation", () => {
+    const dir = createTempProject();
+
+    // Index the project first
+    generateSourceMap({
+      repoRoot: dir,
+      includeComments: true,
+      includeImports: true,
+      includeHeadings: true,
+      includeCodeBlocks: true,
+      includeStats: false,
+      includeAnnotations: true,
+      exportedOnly: false,
+      output: "text",
+    });
+
+    const db = openCache(dir);
+    
+    // Valid symbol should exist
+    const validSymbols = db.findSymbols("src/example.ts", "greet", "function", null);
+    expect(validSymbols.length).toBeGreaterThan(0);
+
+    // Invalid symbol should not exist
+    const invalidSymbols = db.findSymbols("src/example.ts", "nonexistent", "function", null);
+    expect(invalidSymbols.length).toBe(0);
+
+    db.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("clearFiles preserves annotations, clearAnnotations removes them", () => {
+    const dir = createTempProject();
+
+    // Index
+    generateSourceMap({
+      repoRoot: dir,
+      includeComments: true,
+      includeImports: true,
+      includeHeadings: true,
+      includeCodeBlocks: true,
+      includeStats: false,
+      includeAnnotations: true,
+      exportedOnly: false,
+      output: "text",
+    });
+
+    const db = openCache(dir);
+
+    // Add annotations
+    db.setFileAnnotation("src/example.ts", "File note");
+    db.setSymbolAnnotation(
+      {
+        path: "src/example.ts",
+        symbolName: "greet",
+        symbolKind: "function",
+        parentName: null,
+        signature: null,
+      },
+      "Symbol note",
+    );
+
+    // Verify annotations exist
+    expect(db.getFileAnnotation("src/example.ts")).toBe("File note");
+    expect(
+      db.getSymbolAnnotation({
+        path: "src/example.ts",
+        symbolName: "greet",
+        symbolKind: "function",
+        parentName: null,
+        signature: null,
+      }),
+    ).toBe("Symbol note");
+
+    // Clear files - annotations should remain
+    db.clearFiles();
+    expect(db.getFileAnnotation("src/example.ts")).toBe("File note");
+    expect(
+      db.getSymbolAnnotation({
+        path: "src/example.ts",
+        symbolName: "greet",
+        symbolKind: "function",
+        parentName: null,
+        signature: null,
+      }),
+    ).toBe("Symbol note");
+
+    // Clear annotations - now they should be gone
+    db.clearAnnotations();
+    expect(db.getFileAnnotation("src/example.ts")).toBeNull();
+    expect(
+      db.getSymbolAnnotation({
+        path: "src/example.ts",
+        symbolName: "greet",
+        symbolKind: "function",
+        parentName: null,
+        signature: null,
+      }),
+    ).toBeNull();
+
+    db.close();
     fs.rmSync(dir, { recursive: true, force: true });
   });
 });

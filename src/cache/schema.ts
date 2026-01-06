@@ -1,7 +1,6 @@
-import Database from "better-sqlite3";
+import type { Database as DB } from "./sqlite.js";
 
 export const SCHEMA_VERSION = 3;
-type DB = Database.Database;
 
 const MIGRATION_1 = `
 CREATE TABLE IF NOT EXISTS meta (

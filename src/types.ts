@@ -165,6 +165,7 @@ export type SourceMapOptions = {
   includeHeadings: boolean;
   includeCodeBlocks: boolean;
   includeStats: boolean;
+  includeAnnotations: boolean;
   exportedOnly: boolean;
 
   // Budget

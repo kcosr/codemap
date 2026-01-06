@@ -136,14 +136,13 @@ Options:
   --no-headings          Exclude markdown headings
   --no-code-blocks       Exclude markdown code block ranges
   --no-stats             Exclude project statistics header
+  --no-annotations       Exclude annotations from output
   --refs                 Include references (incoming). Use --refs=full for read/write refs
   --refs-in              Include incoming references
   --refs-out             Include outgoing references
   --max-refs             Max references per symbol in output
   --force-refs           Force re-extraction of references
   --no-cache             Force full re-extraction (ignore cache)
-  --cache-stats          Show cache statistics
-  --prune-annotations    Remove orphaned annotations
   --tsconfig             Path to tsconfig.json or jsconfig.json
   --no-tsconfig          Disable tsconfig-based resolution
 ```
@@ -354,18 +353,22 @@ Codemap maintains a persistent cache at `.codemap/cache.db` inside each repo. Ev
 
 ```bash
 # View cache statistics
-codemap --cache-stats
+codemap cache
 
-# Force full re-extraction
+# Clear cache (keeps annotations)
+codemap cache clear
+
+# Clear everything including annotations
+codemap cache clear --all
+
+# Force full re-extraction on next run
 codemap --no-cache
-
-# Normal incremental run (default)
-codemap
 ```
 
 - First run populates the cache for the full repo or selected patterns.
 - Subsequent runs are incremental unless you pass `--no-cache`.
-- Add `.codemap/` to your `.gitignore` (it's local cache, not meant to be shared).
+- Annotations are preserved across cache clears (unless `--all` is used).
+- Add `.codemap/` to your `.gitignore`, or commit just the annotations by running `cache clear` first.
 
 ## Annotations
 
@@ -429,15 +432,15 @@ JSON output includes `"annotation"` fields on files and symbols.
 
 ### Orphaned Annotations
 
-When files or symbols are renamed/deleted, their annotations become orphaned:
+When files or symbols are renamed/deleted, their annotations become orphaned but preserved. This allows annotations to reconnect if files are restored.
 
 ```bash
 # Check for orphans
-codemap --cache-stats
-# Shows: orphaned: 2 (run --prune-annotations to clean)
+codemap cache
+# Shows: orphaned: 2
 
-# Remove orphaned annotations
-codemap --prune-annotations
+# To remove all annotations (including orphaned)
+codemap cache clear --all
 ```
 
 ## Output Examples
@@ -526,6 +529,7 @@ const result = generateSourceMap({
   includeHeadings: true,
   includeCodeBlocks: true,
   includeStats: true,
+  includeAnnotations: true,
   exportedOnly: false,
   tokenBudget: 8000,        // optional
   useCache: true,           // default

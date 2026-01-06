@@ -115,7 +115,7 @@ function renderSymbol(
   if (sym.exported) line += " [exported]";
   lines.push(line);
 
-  if (sym.annotation) {
+  if (opts.includeAnnotations && sym.annotation) {
     lines.push(`${indent}  [note: ${sym.annotation}]`);
   }
 
@@ -288,7 +288,7 @@ export function renderFileEntry(
     return lines.join("\n");
   }
 
-  if (file.annotation) {
+  if (opts.includeAnnotations && file.annotation) {
     lines.push(`  [note: ${file.annotation}]`);
   }
 
