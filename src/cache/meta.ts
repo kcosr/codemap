@@ -1,11 +1,10 @@
-import Database from "better-sqlite3";
+import type { Database as DB } from "./sqlite.js";
 
 export type CacheMeta = {
   createdAt: string | null;
   lastUpdatedAt: string | null;
   extractorVersion: string | null;
 };
-type DB = Database.Database;
 
 export function getMeta(db: DB, key: string): string | null {
   const row = db.prepare("SELECT value FROM meta WHERE key = ?").get(key) as

@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import Database from "better-sqlite3";
+import Database, { type Database as DB } from "./sqlite.js";
 import type { Language, ResolvedImport, SymbolKind } from "../types.js";
 import { migrate } from "./schema.js";
 import {
@@ -37,7 +37,6 @@ import type { ReferenceRow, RefStateRow } from "./references.js";
 import { ensureMeta, readMeta, setMeta, updateLastUpdated } from "./meta.js";
 
 export const EXTRACTOR_VERSION = "2";
-type DB = Database.Database;
 
 export type CachedFile = {
   path: string;
@@ -140,8 +139,8 @@ export class CacheDB {
     this.db.close();
   }
 
-  transaction<T extends (...args: any[]) => any>(fn: T): Database.Transaction<T> {
-    return this.db.transaction(fn);
+  transaction<T extends (...args: any[]) => any>(fn: T): T {
+    return this.db.transaction(fn) as T;
   }
 
   getCachedFiles(): Map<string, CachedFile> {

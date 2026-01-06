@@ -1,7 +1,5 @@
-import type Database from "better-sqlite3";
+import type { Database as DB } from "./sqlite.js";
 import type { ImportKind, ResolutionMethod, ResolvedImport } from "../types.js";
-
-type DB = Database.Database;
 
 export type ResolvedImportRow = {
   importer_path: string;
