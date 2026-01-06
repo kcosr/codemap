@@ -55,6 +55,7 @@ const DEFAULT_OPTIONS: Partial<SourceMapOptions> = {
   includeHeadings: true,
   includeCodeBlocks: true,
   includeStats: true,
+  includeAnnotations: true,
   exportedOnly: false,
   output: "text",
   useCache: true,

@@ -377,6 +377,7 @@ const cli = yargs(hideBin(process.argv))
         includeHeadings: false,
         includeCodeBlocks: false,
         includeStats: false,
+        includeAnnotations: true,
         exportedOnly: false,
         output: "text",
         useCache: true,
@@ -526,6 +527,7 @@ const cli = yargs(hideBin(process.argv))
         includeHeadings: true,
         includeCodeBlocks: true,
         includeStats: false,
+        includeAnnotations: true,
         exportedOnly: false,
         output: "text",
         forceRefresh: argv["no-cache"],
@@ -571,30 +573,35 @@ const cli = yargs(hideBin(process.argv))
           default: false,
           describe: "Only include exported symbols",
         })
-        .option("no-comments", {
+        .option("comments", {
           type: "boolean",
-          default: false,
-          describe: "Exclude JSDoc comments",
+          default: true,
+          describe: "Include JSDoc comments",
         })
-        .option("no-imports", {
+        .option("imports", {
           type: "boolean",
-          default: false,
-          describe: "Exclude import lists",
+          default: true,
+          describe: "Include import lists",
         })
-        .option("no-headings", {
+        .option("headings", {
           type: "boolean",
-          default: false,
-          describe: "Exclude markdown headings",
+          default: true,
+          describe: "Include markdown headings",
         })
-        .option("no-code-blocks", {
+        .option("code-blocks", {
           type: "boolean",
-          default: false,
-          describe: "Exclude markdown code block ranges",
+          default: true,
+          describe: "Include markdown code blocks",
         })
-        .option("no-stats", {
+        .option("stats", {
           type: "boolean",
-          default: false,
-          describe: "Exclude project statistics header",
+          default: true,
+          describe: "Include project statistics",
+        })
+        .option("annotations", {
+          type: "boolean",
+          default: true,
+          describe: "Include annotations",
         })
         .option("refs", {
           type: "string",
@@ -672,11 +679,12 @@ const cli = yargs(hideBin(process.argv))
         repoRoot: repoRoot,
         patterns: (argv.patterns as string[]) ?? [],
         ignore: argv.ignore as string[] | undefined,
-        includeComments: !argv["no-comments"],
-        includeImports: !argv["no-imports"],
-        includeHeadings: !argv["no-headings"],
-        includeCodeBlocks: !argv["no-code-blocks"],
-        includeStats: !argv["no-stats"],
+        includeComments: argv.comments !== false,
+        includeImports: argv.imports !== false,
+        includeHeadings: argv.headings !== false,
+        includeCodeBlocks: argv["code-blocks"] !== false,
+        includeStats: argv.stats !== false,
+        includeAnnotations: argv.annotations !== false,
         exportedOnly: argv["exported-only"],
         tokenBudget: argv.budget,
         output,
@@ -745,6 +753,14 @@ const cli = yargs(hideBin(process.argv))
           throw new Error("Annotation text is required.");
         }
 
+        const fileRow = db.getFile(normalizedPath);
+        if (!fileRow) {
+          db.close();
+          throw new Error(
+            `File not found in cache: ${normalizedPath}. Run 'codemap' first to index files.`,
+          );
+        }
+
         db.setFileAnnotation(normalizedPath, note);
         db.close();
         console.log(`Saved annotation for ${normalizedPath}`);
@@ -779,6 +795,19 @@ const cli = yargs(hideBin(process.argv))
         db.close();
         throw new Error(
           `Unknown symbol kind "${symbolKey.symbolKind}". Expected one of: ${[...SYMBOL_KINDS].join(", ")}.`,
+        );
+      }
+
+      const symbols = db.findSymbols(
+        normalizedPath,
+        symbolKey.symbolName,
+        symbolKey.symbolKind,
+        symbolKey.parentName,
+      );
+      if (symbols.length === 0) {
+        db.close();
+        throw new Error(
+          `Symbol not found: ${symbolKey.symbolKind} ${symbolKey.symbolName} in ${normalizedPath}. Run 'codemap' first to index files.`,
         );
       }
 
@@ -886,6 +915,7 @@ const cli = yargs(hideBin(process.argv))
         includeHeadings: true,
         includeCodeBlocks: true,
         includeStats: false,
+        includeAnnotations: true,
         exportedOnly: false,
         output: "text",
         useCache: true,
@@ -977,6 +1007,7 @@ const cli = yargs(hideBin(process.argv))
         includeHeadings: true,
         includeCodeBlocks: true,
         includeStats: false,
+        includeAnnotations: true,
         exportedOnly: false,
         output: "text",
         useCache: true,
@@ -1066,6 +1097,7 @@ const cli = yargs(hideBin(process.argv))
         includeHeadings: true,
         includeCodeBlocks: true,
         includeStats: false,
+        includeAnnotations: true,
         exportedOnly: false,
         output: "text",
         useCache: true,
@@ -1161,6 +1193,7 @@ const cli = yargs(hideBin(process.argv))
         includeHeadings: true,
         includeCodeBlocks: true,
         includeStats: false,
+        includeAnnotations: true,
         exportedOnly: false,
         output: "text",
         useCache: true,
@@ -1237,6 +1270,7 @@ const cli = yargs(hideBin(process.argv))
         includeHeadings: true,
         includeCodeBlocks: true,
         includeStats: false,
+        includeAnnotations: true,
         exportedOnly: false,
         output: "text",
         useCache: true,
@@ -1311,6 +1345,7 @@ const cli = yargs(hideBin(process.argv))
         includeHeadings: true,
         includeCodeBlocks: true,
         includeStats: false,
+        includeAnnotations: true,
         exportedOnly: false,
         output: "text",
         useCache: true,
