@@ -201,4 +201,77 @@ describe("annotations", () => {
     db.close();
     fs.rmSync(dir, { recursive: true, force: true });
   });
+
+  it("clearFiles preserves annotations, clearAnnotations removes them", () => {
+    const dir = createTempProject();
+
+    // Index
+    generateSourceMap({
+      repoRoot: dir,
+      includeComments: true,
+      includeImports: true,
+      includeHeadings: true,
+      includeCodeBlocks: true,
+      includeStats: false,
+      includeAnnotations: true,
+      exportedOnly: false,
+      output: "text",
+    });
+
+    const db = openCache(dir);
+
+    // Add annotations
+    db.setFileAnnotation("src/example.ts", "File note");
+    db.setSymbolAnnotation(
+      {
+        path: "src/example.ts",
+        symbolName: "greet",
+        symbolKind: "function",
+        parentName: null,
+        signature: null,
+      },
+      "Symbol note",
+    );
+
+    // Verify annotations exist
+    expect(db.getFileAnnotation("src/example.ts")).toBe("File note");
+    expect(
+      db.getSymbolAnnotation({
+        path: "src/example.ts",
+        symbolName: "greet",
+        symbolKind: "function",
+        parentName: null,
+        signature: null,
+      }),
+    ).toBe("Symbol note");
+
+    // Clear files - annotations should remain
+    db.clearFiles();
+    expect(db.getFileAnnotation("src/example.ts")).toBe("File note");
+    expect(
+      db.getSymbolAnnotation({
+        path: "src/example.ts",
+        symbolName: "greet",
+        symbolKind: "function",
+        parentName: null,
+        signature: null,
+      }),
+    ).toBe("Symbol note");
+
+    // Clear annotations - now they should be gone
+    db.clearAnnotations();
+    expect(db.getFileAnnotation("src/example.ts")).toBeNull();
+    expect(
+      db.getSymbolAnnotation({
+        path: "src/example.ts",
+        symbolName: "greet",
+        symbolKind: "function",
+        parentName: null,
+        signature: null,
+      }),
+    ).toBeNull();
+
+    db.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
 });

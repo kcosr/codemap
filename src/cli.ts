@@ -297,7 +297,7 @@ function renderCacheStats(stats: CacheStats): string {
   lines.push(`  - file: ${stats.annotations.file}`);
   lines.push(`  - symbol: ${stats.annotations.symbol}`);
   lines.push(
-    `  - orphaned: ${stats.annotations.orphaned} (run 'codemap cache prune' to clean)`,
+    `  - orphaned: ${stats.annotations.orphaned}`,
   );
 
   return lines.join("\n");
@@ -850,14 +850,20 @@ const cli = yargs(hideBin(process.argv))
   )
   .command(
     "cache [action]",
-    "Manage cache (stats, reset, prune)",
+    "Manage cache (stats, clear)",
     (y) =>
-      y.positional("action", {
-        describe: "Action: stats (default), reset, prune",
-        type: "string",
-        choices: ["stats", "reset", "prune"],
-        default: "stats",
-      }),
+      y
+        .positional("action", {
+          describe: "Action: stats (default), clear",
+          type: "string",
+          choices: ["stats", "clear"],
+          default: "stats",
+        })
+        .option("all", {
+          type: "boolean",
+          default: false,
+          describe: "Clear everything including annotations",
+        }),
     (argv) => {
       const repoRoot = argv.dir as string;
       const action = argv.action as string;
@@ -870,19 +876,15 @@ const cli = yargs(hideBin(process.argv))
         return;
       }
 
-      if (action === "reset") {
+      if (action === "clear") {
         db.clearFiles();
+        if (argv.all) {
+          db.clearAnnotations();
+          console.log("Cache cleared (including annotations).");
+        } else {
+          console.log("Cache cleared (annotations preserved).");
+        }
         db.close();
-        console.log("Cache cleared (annotations preserved).");
-        return;
-      }
-
-      if (action === "prune") {
-        const result = db.pruneOrphanedAnnotations();
-        db.close();
-        console.log(
-          `Pruned annotations: file ${result.file}, symbol ${result.symbol}`,
-        );
         return;
       }
     },

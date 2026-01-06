@@ -193,6 +193,11 @@ export class CacheDB {
     this.db.prepare("DELETE FROM files").run();
   }
 
+  clearAnnotations(): void {
+    this.db.prepare("DELETE FROM file_annotations").run();
+    this.db.prepare("DELETE FROM symbol_annotations").run();
+  }
+
   insertSymbols(path: string, symbols: SymbolRow[]): void {
     if (symbols.length === 0) return;
     const stmt = this.db.prepare(
