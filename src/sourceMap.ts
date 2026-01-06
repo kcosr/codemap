@@ -274,8 +274,12 @@ function buildEntriesFromCache(
     const fileRow = db.getFile(relPath);
     if (!fileRow) continue;
 
-    const fileAnnotation = db.getFileAnnotation(relPath) ?? undefined;
-    const symbolAnnotations = db.getSymbolAnnotationMap(relPath);
+    const fileAnnotation = opts.includeAnnotations
+      ? db.getFileAnnotation(relPath) ?? undefined
+      : undefined;
+    const symbolAnnotations = opts.includeAnnotations
+      ? db.getSymbolAnnotationMap(relPath)
+      : new Map<string, string>();
 
     const refsMode = opts.refsMode ?? (opts.includeRefs ? "structural" : undefined);
     const refKinds =
