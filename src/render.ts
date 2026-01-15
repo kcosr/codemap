@@ -150,11 +150,13 @@ function renderSymbol(
   level: DetailLevel,
   opts: SourceMapOptions,
   indent: string,
+  language?: string | null,
 ): string[] {
   const lines: string[] = [];
   const lineRange = `${sym.startLine}-${sym.endLine}: `;
   let line = `${indent}${lineRange}${formatSymbolLabel(sym, level)}`;
-  if (sym.exported) line += " [exported]";
+  // Hide [exported] for C++ (too noisy - most symbols have external linkage)
+  if (sym.exported && language !== "cpp") line += " [exported]";
   lines.push(line);
 
   if (opts.includeAnnotations && sym.annotation) {
@@ -178,7 +180,7 @@ function renderSymbol(
   if (sym.children && sym.children.length > 0) {
     if (level !== "minimal" && level !== "outline") {
       for (const child of sym.children) {
-        lines.push(...renderSymbol(child, level, opts, `${indent}  `));
+        lines.push(...renderSymbol(child, level, opts, `${indent}  `, language));
       }
     }
   }
@@ -340,7 +342,7 @@ export function renderFileEntry(
     for (const [kind, symbols] of grouped) {
       lines.push(`  ${kind}:`);
       for (const sym of symbols) {
-        lines.push(...renderSymbol(sym, file.detailLevel, opts, "    "));
+        lines.push(...renderSymbol(sym, file.detailLevel, opts, "    ", file.language));
       }
     }
   }

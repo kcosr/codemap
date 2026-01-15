@@ -9,16 +9,9 @@ Codemap generates a compact, token-aware map of a codebase: files, symbols, and 
 - **Markdown**: Headings and code block ranges
 - **Other files**: Listed with line counts (no symbol extraction)
 
-### C++ Notes
+### C++ Limitations
 
 C++ support uses [tree-sitter-cpp](https://github.com/tree-sitter/tree-sitter-cpp) for parsing.
-
-**`[exported]` marker meaning:**
-- Class members: `[exported]` = `public` access
-- Free functions: `[exported]` = external linkage (no `static` keyword)
-- `static` functions have internal linkage and are NOT marked exported
-
-**Limitations:**
 - **Node.js only**: C++ extraction is disabled when running under Bun (tree-sitter native modules don't work with Bun)
 - **No cross-file references**: Reference commands (`find-refs`, `callers`, `call-graph`) only work for TypeScript/JavaScript
 - **Include resolution**: Local includes (`"header.hpp"`) are resolved relative to the source file; system includes (`<vector>`) are tracked but not resolved
