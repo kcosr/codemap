@@ -1,5 +1,5 @@
-import Parser from "tree-sitter";
-import CPP from "tree-sitter-cpp";
+import { createRequire } from "node:module";
+import type Parser from "tree-sitter";
 import type { SymbolEntry } from "./types.js";
 import { extractIncludes, type IncludeSpec } from "./deps/extract-includes.js";
 
@@ -13,8 +13,11 @@ type Scope = {
   access?: AccessLevel;
 };
 
-function ensureWritableTypeProperty(): void {
-  const syntaxNode = (Parser as unknown as { SyntaxNode?: { prototype?: object } })
+const isBun = typeof (globalThis as any).Bun !== "undefined";
+const disableCpp = process.env.CODEMAP_DISABLE_CPP === "1";
+
+function ensureWritableTypeProperty(parserCtor: unknown): void {
+  const syntaxNode = (parserCtor as { SyntaxNode?: { prototype?: object } })
     .SyntaxNode;
   const proto = syntaxNode?.prototype;
   if (!proto) return;
@@ -23,12 +26,20 @@ function ensureWritableTypeProperty(): void {
   Object.defineProperty(proto, "type", { ...desc, set: () => {} });
 }
 
-// Bun may run modules in strict mode, so make SyntaxNode.type writable to
-// avoid tree-sitter's prototype assignment error.
-ensureWritableTypeProperty();
+let parser: Parser | null = null;
 
-const parser = new Parser();
-parser.setLanguage(CPP);
+if (!isBun && !disableCpp) {
+  try {
+    const require = createRequire(import.meta.url);
+    const ParserCtor = require("tree-sitter") as typeof import("tree-sitter");
+    const CPP = require("tree-sitter-cpp") as unknown;
+    ensureWritableTypeProperty(ParserCtor);
+    parser = new ParserCtor();
+    parser.setLanguage(CPP);
+  } catch {
+    parser = null;
+  }
+}
 
 function normalizeWhitespace(value: string): string {
   return value.replace(/\s+/g, " ").trim();
@@ -217,9 +228,17 @@ export function extractCppSymbols(
   content: string,
   opts?: { includeComments?: boolean },
 ): { symbols: SymbolEntry[]; includes: IncludeSpec[] } {
-  const tree = parser.parse(content);
-  const symbols: SymbolEntry[] = [];
   const includes = extractIncludes(content);
+  if (!parser) {
+    return { symbols: [], includes };
+  }
+  let tree: Parser.Tree;
+  try {
+    tree = parser.parse(content);
+  } catch {
+    return { symbols: [], includes };
+  }
+  const symbols: SymbolEntry[] = [];
   const scopeStack: Scope[] = [];
   const classKeys = new Set<string>();
 

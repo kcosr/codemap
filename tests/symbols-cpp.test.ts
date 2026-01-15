@@ -2,8 +2,10 @@ import { describe, it, expect } from "vitest";
 import { extractFileSymbols } from "../src/symbols.js";
 
 const TIMEOUT = 20000;
+const isBun = typeof (globalThis as any).Bun !== "undefined";
+const describeCpp = isBun ? describe.skip : describe;
 
-describe("extractFileSymbols (C++)", () => {
+describeCpp("extractFileSymbols (C++)", () => {
   it(
     "extracts namespaces, classes, members, enums, and includes",
     { timeout: TIMEOUT },

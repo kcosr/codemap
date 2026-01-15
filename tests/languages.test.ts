@@ -14,8 +14,11 @@ describe("languages", () => {
   });
 
   it("reports supported extraction types", () => {
+    const isBun = typeof (globalThis as any).Bun !== "undefined";
+
     expect(canExtractSymbols("typescript")).toBe(true);
     expect(canExtractSymbols("javascript")).toBe(true);
+    expect(canExtractSymbols("cpp")).toBe(!isBun);
     expect(canExtractSymbols("markdown")).toBe(false);
     expect(canExtractSymbols("other")).toBe(false);
 

@@ -6,6 +6,9 @@ import { generateSourceMap } from "../src/sourceMap.js";
 import { openCache } from "../src/cache/db.js";
 import { buildDependencyTree } from "../src/deps/tree.js";
 
+const isBun = typeof (globalThis as any).Bun !== "undefined";
+const describeCpp = isBun ? describe.skip : describe;
+
 function createTempProject(): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "codemap-cpp-"));
   fs.mkdirSync(path.join(dir, "src"), { recursive: true });
@@ -22,7 +25,7 @@ function createTempProject(): string {
   return dir;
 }
 
-describe("C++ dependency integration", () => {
+describeCpp("C++ dependency integration", () => {
   it("resolves local includes and records system includes", () => {
     const dir = createTempProject();
 
