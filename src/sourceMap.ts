@@ -19,6 +19,7 @@ import {
   canExtractStructure,
 } from "./languages.js";
 import { extractFileSymbols, extractFileSymbolsDetailed } from "./symbols.js";
+import { extractCppSymbols } from "./symbols-cpp.js";
 import { extractMarkdownStructure } from "./markdown.js";
 import { computeStats } from "./stats.js";
 import { renderFileEntry } from "./render.js";
@@ -39,6 +40,12 @@ import {
   resolveImports,
   type ResolverContext,
 } from "./deps/resolver.js";
+import {
+  createCppResolverContext,
+  resolveIncludes,
+  type CppResolverContext,
+} from "./deps/cpp-resolver.js";
+import type { IncludeSpec } from "./deps/extract-includes.js";
 import {
   detectChanges,
   statDiscoveredFiles,
@@ -77,6 +84,12 @@ const DETAIL_LEVELS: DetailLevel[] = [
 ];
 
 const MM_OPTS = { dot: true } as const;
+
+function formatIncludeSource(include: IncludeSpec): string {
+  return include.kind === "system"
+    ? `<${include.source}>`
+    : `"${include.source}"`;
+}
 
 function reduceDetailLevel(level: DetailLevel): DetailLevel {
   const idx = DETAIL_LEVELS.indexOf(level);
@@ -176,6 +189,7 @@ type Extracted = {
 function extractFileForCache(
   file: DiscoveredFile,
   resolverContext: ResolverContext,
+  cppResolverContext: CppResolverContext,
 ): Extracted | null {
   let buf: Buffer;
   let content: string;
@@ -210,33 +224,63 @@ function extractFileForCache(
   let codeBlocks: CodeBlockRow[] = [];
 
   if (canExtractSymbols(language)) {
-    const extracted = extractFileSymbolsDetailed(file.path, content, {
-      includeComments: true,
-    });
-    symbols = extracted.symbols.map((sym) => ({
-      path: file.path,
-      name: sym.name,
-      kind: sym.kind,
-      signature: sym.signature,
-      start_line: sym.startLine,
-      end_line: sym.endLine,
-      exported: sym.exported ? 1 : 0,
-      is_default: sym.isDefault ? 1 : 0,
-      is_async: sym.isAsync ? 1 : 0,
-      is_static: sym.isStatic ? 1 : 0,
-      is_abstract: sym.isAbstract ? 1 : 0,
-      parent_name: sym.parentName ?? null,
-      jsdoc: sym.comment ?? null,
-    }));
-    imports = extracted.imports.map((source) => ({
-      path: file.path,
-      source,
-    }));
-    resolvedImports = resolveImports(
-      file.path,
-      extracted.importSpecs,
-      resolverContext,
-    );
+    if (language === "cpp") {
+      const extracted = extractCppSymbols(file.path, content, {
+        includeComments: true,
+      });
+      symbols = extracted.symbols.map((sym) => ({
+        path: file.path,
+        name: sym.name,
+        kind: sym.kind,
+        signature: sym.signature,
+        start_line: sym.startLine,
+        end_line: sym.endLine,
+        exported: sym.exported ? 1 : 0,
+        is_default: sym.isDefault ? 1 : 0,
+        is_async: sym.isAsync ? 1 : 0,
+        is_static: sym.isStatic ? 1 : 0,
+        is_abstract: sym.isAbstract ? 1 : 0,
+        parent_name: sym.parentName ?? null,
+        jsdoc: sym.comment ?? null,
+      }));
+      imports = extracted.includes.map((inc) => ({
+        path: file.path,
+        source: formatIncludeSource(inc),
+      }));
+      resolvedImports = resolveIncludes(
+        file.path,
+        extracted.includes,
+        cppResolverContext,
+      );
+    } else {
+      const extracted = extractFileSymbolsDetailed(file.path, content, {
+        includeComments: true,
+      });
+      symbols = extracted.symbols.map((sym) => ({
+        path: file.path,
+        name: sym.name,
+        kind: sym.kind,
+        signature: sym.signature,
+        start_line: sym.startLine,
+        end_line: sym.endLine,
+        exported: sym.exported ? 1 : 0,
+        is_default: sym.isDefault ? 1 : 0,
+        is_async: sym.isAsync ? 1 : 0,
+        is_static: sym.isStatic ? 1 : 0,
+        is_abstract: sym.isAbstract ? 1 : 0,
+        parent_name: sym.parentName ?? null,
+        jsdoc: sym.comment ?? null,
+      }));
+      imports = extracted.imports.map((source) => ({
+        path: file.path,
+        source,
+      }));
+      resolvedImports = resolveImports(
+        file.path,
+        extracted.importSpecs,
+        resolverContext,
+      );
+    }
   } else if (canExtractStructure(language)) {
     const structure = extractMarkdownStructure(content);
     headings = structure.headings.map((h) => ({
@@ -409,6 +453,7 @@ function updateCache(
   changes: FileChange[],
   touches: FileTouch[],
   resolverContext: ResolverContext,
+  cppResolverContext: CppResolverContext,
 ): void {
   if (touches.length > 0) {
     const applyTouches = db.transaction(() => {
@@ -437,7 +482,10 @@ function updateCache(
         extractedByPath.set(change.path, null);
         continue;
       }
-      extractedByPath.set(change.path, extractFileForCache(file, resolverContext));
+      extractedByPath.set(
+        change.path,
+        extractFileForCache(file, resolverContext, cppResolverContext),
+      );
     }
   }
 
@@ -495,13 +543,25 @@ function extractFileEntryNoCache(
   let codeBlocks: MarkdownCodeBlock[] | undefined;
 
   if (canExtractSymbols(language)) {
-    const extracted = extractFileSymbols(relPath, content, {
-      includeComments: opts.includeComments,
-    });
-    symbols = opts.exportedOnly
-      ? extracted.symbols.filter((s) => s.exported)
-      : extracted.symbols;
-    imports = opts.includeImports ? extracted.imports : [];
+    if (language === "cpp") {
+      const extracted = extractCppSymbols(relPath, content, {
+        includeComments: opts.includeComments,
+      });
+      symbols = opts.exportedOnly
+        ? extracted.symbols.filter((s) => s.exported)
+        : extracted.symbols;
+      imports = opts.includeImports
+        ? extracted.includes.map(formatIncludeSource)
+        : [];
+    } else {
+      const extracted = extractFileSymbols(relPath, content, {
+        includeComments: opts.includeComments,
+      });
+      symbols = opts.exportedOnly
+        ? extracted.symbols.filter((s) => s.exported)
+        : extracted.symbols;
+      imports = opts.includeImports ? extracted.imports : [];
+    }
   } else if (canExtractStructure(language)) {
     const structure = extractMarkdownStructure(content);
     headings = opts.includeHeadings ? structure.headings : undefined;
@@ -612,8 +672,9 @@ export function refreshCache(
     tsconfigPath: opts.tsconfigPath ?? null,
     useTsconfig: opts.useTsconfig,
   });
+  const cppResolverContext = createCppResolverContext(repoRoot, fileIndex);
 
-  updateCache(db, discovered, changes, touches, resolverContext);
+  updateCache(db, discovered, changes, touches, resolverContext, cppResolverContext);
 
   if (opts.refsMode) {
     updateReferences(db, {

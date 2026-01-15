@@ -19,6 +19,9 @@ import {
 } from "ts-morph";
 import type { ImportSpec, SymbolEntry } from "./types.js";
 import { extractImportSpecs } from "./deps/extract-imports.js";
+import { detectLanguage } from "./languages.js";
+import { extractCppSymbols } from "./symbols-cpp.js";
+import type { IncludeSpec } from "./deps/extract-includes.js";
 
 let project: Project | null = null;
 let virtualCounter = 0;
@@ -538,6 +541,12 @@ function buildImportList(specs: ImportSpec[]): string[] {
   return modules;
 }
 
+function formatIncludeSource(include: IncludeSpec): string {
+  return include.kind === "system"
+    ? `<${include.source}>`
+    : `"${include.source}"`;
+}
+
 export function extractFileSymbolsDetailed(
   filePath: string,
   content: string,
@@ -565,6 +574,14 @@ export function extractFileSymbols(
   content: string,
   opts?: { includeComments?: boolean },
 ): { symbols: SymbolEntry[]; imports: string[] } {
+  const language = detectLanguage(filePath);
+  if (language === "cpp") {
+    const extracted = extractCppSymbols(filePath, content, opts);
+    return {
+      symbols: extracted.symbols,
+      imports: extracted.includes.map(formatIncludeSource),
+    };
+  }
   const extracted = extractFileSymbolsDetailed(filePath, content, opts);
   return { symbols: extracted.symbols, imports: extracted.imports };
 }

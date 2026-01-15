@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { CacheDB } from "../cache/db.js";
 import type { FileChange } from "../cache/changes.js";
-import { detectLanguage, canExtractSymbols } from "../languages.js";
+import { detectLanguage, canExtractReferences } from "../languages.js";
 import { findNearestTsConfigPath } from "../deps/ts-resolver.js";
 import { extractFileReferences, loadProject, SymbolIndex, type ReferenceMode } from "./extractor.js";
 
@@ -21,7 +21,7 @@ export function updateReferences(db: CacheDB, opts: UpdateRefsOptions): void {
   if (!opts.refsMode) return;
 
   const symbolFiles = opts.filePaths.filter((relPath) =>
-    canExtractSymbols(detectLanguage(relPath)),
+    canExtractReferences(detectLanguage(relPath)),
   );
   if (symbolFiles.length === 0) return;
 

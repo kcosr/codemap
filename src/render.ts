@@ -11,13 +11,27 @@ import type {
 } from "./types.js";
 
 const GROUP_ORDER: SymbolKind[] = [
-  "type",
-  "interface",
-  "enum",
+  "namespace",
   "class",
+  "struct",
+  "enum",
+  "interface",
+  "type",
   "function",
   "variable",
 ];
+
+const CONTAINER_KINDS = new Set<SymbolKind>([
+  "namespace",
+  "class",
+  "struct",
+  "enum",
+  "interface",
+]);
+
+function buildSymbolKey(sym: SymbolEntry): string {
+  return sym.parentName ? `${sym.parentName}::${sym.name}` : sym.name;
+}
 
 const STRUCTURAL_REF_KINDS = new Set<ReferenceKind>([
   "import",
@@ -30,26 +44,47 @@ const STRUCTURAL_REF_KINDS = new Set<ReferenceKind>([
 ]);
 
 function organizeSymbols(symbols: SymbolEntry[]): SymbolEntry[] {
+  const clones = symbols.map((sym) => ({ ...sym }));
   const topLevel: SymbolEntry[] = [];
   const byParent = new Map<string, SymbolEntry[]>();
+  const containerKeys = new Set<string>();
 
-  for (const sym of symbols) {
+  for (const sym of clones) {
+    if (CONTAINER_KINDS.has(sym.kind)) {
+      containerKeys.add(buildSymbolKey(sym));
+    }
+  }
+
+  for (const sym of clones) {
+    if (sym.parentName && !containerKeys.has(sym.parentName)) {
+      sym.parentName = undefined;
+      topLevel.push(sym);
+      continue;
+    }
+
     if (sym.parentName) {
       const siblings = byParent.get(sym.parentName) ?? [];
       siblings.push(sym);
       byParent.set(sym.parentName, siblings);
     } else {
-      topLevel.push({ ...sym });
+      topLevel.push(sym);
     }
   }
 
-  for (const sym of topLevel) {
-    if (sym.kind === "class" || sym.kind === "enum") {
-      const children = byParent.get(sym.name);
-      if (children) {
-        sym.children = [...children].sort((a, b) => a.startLine - b.startLine);
-      }
+  const attachChildren = (sym: SymbolEntry): void => {
+    if (!CONTAINER_KINDS.has(sym.kind)) return;
+    const key = buildSymbolKey(sym);
+    const children = byParent.get(key);
+    if (!children) return;
+    const ordered = [...children].sort((a, b) => a.startLine - b.startLine);
+    sym.children = ordered;
+    for (const child of ordered) {
+      attachChildren(child);
     }
+  };
+
+  for (const sym of topLevel) {
+    attachChildren(sym);
   }
 
   return topLevel.sort((a, b) => a.startLine - b.startLine);
@@ -90,8 +125,15 @@ function groupSymbolsByKind(
 function formatSymbolLabel(sym: SymbolEntry, level: DetailLevel): string {
   if (level === "minimal") return sym.name;
 
-  if (sym.kind === "class" || sym.kind === "interface" || sym.kind === "enum") {
-    return `${sym.kind} ${sym.signature || sym.name}`;
+  if (
+    sym.kind === "class" ||
+    sym.kind === "interface" ||
+    sym.kind === "enum" ||
+    sym.kind === "struct" ||
+    sym.kind === "namespace"
+  ) {
+    const sig = sym.signature || sym.name;
+    return new RegExp(`\\b${sym.kind}\\b`).test(sig) ? sig : `${sym.kind} ${sig}`;
   }
 
   return sym.signature || sym.name;
@@ -324,7 +366,8 @@ export function renderFileEntry(
   }
 
   if (opts.includeImports && file.imports.length > 0) {
-    lines.push("  imports:");
+    const label = file.language === "cpp" ? "includes" : "imports";
+    lines.push(`  ${label}:`);
     for (const imp of file.imports) {
       lines.push(`    - ${imp}`);
     }

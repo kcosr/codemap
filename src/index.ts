@@ -8,6 +8,7 @@ export {
   detectLanguage,
   canExtractSymbols,
   canExtractStructure,
+  canExtractReferences,
 } from "./languages.js";
 export { computeStats } from "./stats.js";
 

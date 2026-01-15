@@ -2,6 +2,7 @@ export type Language =
   | "typescript"
   | "javascript"
   | "markdown"
+  | "cpp"
   | "other";
 
 export type SymbolKind =
@@ -16,7 +17,10 @@ export type SymbolKind =
   | "property"
   | "constructor"
   | "getter"
-  | "setter";
+  | "setter"
+  | "namespace"
+  | "struct"
+  | "destructor";
 
 export type ReferenceKind =
   | "import"
@@ -85,14 +89,16 @@ export type ImportKind =
   | "export_from"
   | "dynamic_import"
   | "require"
-  | "side_effect";
+  | "side_effect"
+  | "include";
 
 export type ResolutionMethod =
   | "relative"
   | "paths"
   | "baseUrl"
   | "ts"
-  | "node";
+  | "node"
+  | "include";
 
 export type ImportSpec = {
   source: string;

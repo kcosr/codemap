@@ -17,6 +17,17 @@ const EXTENSION_MAP: Record<string, Language> = {
   // Markdown
   ".md": "markdown",
   ".mdx": "markdown",
+
+  // C++
+  ".cpp": "cpp",
+  ".cxx": "cpp",
+  ".cc": "cpp",
+  ".c++": "cpp",
+  ".hpp": "cpp",
+  ".hxx": "cpp",
+  ".hh": "cpp",
+  ".h++": "cpp",
+  ".h": "cpp",
 };
 
 export function detectLanguage(filePath: string): Language {
@@ -25,6 +36,10 @@ export function detectLanguage(filePath: string): Language {
 }
 
 export function canExtractSymbols(language: Language): boolean {
+  return language === "typescript" || language === "javascript" || language === "cpp";
+}
+
+export function canExtractReferences(language: Language): boolean {
   return language === "typescript" || language === "javascript";
 }
 

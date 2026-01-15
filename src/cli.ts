@@ -39,6 +39,9 @@ const SYMBOL_KINDS = new Set<SymbolKind>([
   "constructor",
   "getter",
   "setter",
+  "namespace",
+  "struct",
+  "destructor",
 ]);
 
 type ParsedTarget = {
