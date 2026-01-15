@@ -2,7 +2,7 @@
 
 ## Overview
 
-Add C++ language support to codemap using web-tree-sitter (WASM) for parsing so it runs in both Node and Bun. This enables symbol extraction (functions, classes, structs, enums, namespaces) and include dependency tracking for C++ codebases.
+Add C++ language support to codemap using native tree-sitter bindings for parsing. This enables symbol extraction (functions, classes, structs, enums, namespaces) and include dependency tracking for C++ codebases.
 
 ## Architecture
 
@@ -23,7 +23,7 @@ Add C++ language support to codemap using web-tree-sitter (WASM) for parsing so 
     ┌─────────────────┐             ┌─────────────────┐
     │   symbols.ts    │             │ symbols-cpp.ts  │  ← NEW
     │   (TS/JS)       │             │ (C++)           │
-    │   ts-morph      │             │ web-tree-sitter │
+    │   ts-morph      │             │ tree-sitter     │
     └─────────────────┘             └─────────────────┘
               │                               │
               ▼                               ▼
@@ -111,8 +111,8 @@ export function canExtractSymbols(language: Language): boolean {
 ### 3. C++ Symbol Extractor (`src/symbols-cpp.ts`) - NEW
 
 **Dependencies:**
-- `web-tree-sitter` - WASM parser runtime (Node + Bun)
-- `tree-sitter-cpp` - C++ grammar (load the .wasm)
+- `tree-sitter` - native parser runtime
+- `tree-sitter-cpp` - C++ grammar
 
 **Exported Functions:**
 ```typescript
@@ -124,8 +124,8 @@ export function extractCppSymbols(
 ```
 
 **Parser initialization:**
-- Load `tree-sitter-cpp.wasm` with `Parser.Language.load(...)`
-- Cache the initialized parser/language for reuse
+- `const parser = new Parser();`
+- `parser.setLanguage(CppLanguage);`
 
 **Tree-sitter Node Types to Handle:**
 
@@ -308,7 +308,7 @@ namespace utils {
 
                     │
                     ▼
-         web-tree-sitter parse
+           tree-sitter parse
                     │
                     ▼
 
@@ -426,13 +426,13 @@ extern "C" {
 ```json
 {
   "dependencies": {
-    "web-tree-sitter": "^0.21.0",
+    "tree-sitter": "^0.21.1",
     "tree-sitter-cpp": "^0.22.0"
   }
 }
 ```
 
-Note: ensure both `tree-sitter.wasm` (runtime) and `tree-sitter-cpp.wasm` are packaged alongside the build output so Node and Bun can load them at runtime.
+Note: tree-sitter uses native bindings and requires Node/Bun native module support.
 
 ## Testing Strategy
 
@@ -446,7 +446,7 @@ Note: ensure both `tree-sitter.wasm` (runtime) and `tree-sitter-cpp.wasm` are pa
    - Create temp C++ project
    - Run full `generateSourceMap()`
    - Verify output structure
-   - Smoke test parser init in Node and Bun (WASM load)
+   - Smoke test parser init in Node and Bun
 
 3. **Manual testing**:
    - Run against real C++ projects (e.g., a small open source lib)

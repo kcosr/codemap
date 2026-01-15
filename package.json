@@ -22,9 +22,9 @@
   "dependencies": {
     "better-sqlite3": "^11.0.0",
     "micromatch": "^4.0.5",
+    "tree-sitter": "^0.21.1",
     "tree-sitter-cpp": "^0.22.0",
     "ts-morph": "^24.0.0",
-    "web-tree-sitter": "^0.21.0",
     "yargs": "^17.7.2"
   },
   "devDependencies": {

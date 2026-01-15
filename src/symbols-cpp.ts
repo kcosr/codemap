@@ -1,8 +1,5 @@
-import fs from "node:fs";
-import path from "node:path";
-import { createRequire } from "node:module";
-import { fileURLToPath } from "node:url";
-import Parser from "web-tree-sitter";
+import Parser from "tree-sitter";
+import CPP from "tree-sitter-cpp";
 import type { SymbolEntry } from "./types.js";
 import { extractIncludes, type IncludeSpec } from "./deps/extract-includes.js";
 
@@ -16,96 +13,22 @@ type Scope = {
   access?: AccessLevel;
 };
 
-type ParserState = {
-  parser: Parser;
-  language: Parser.Language;
-};
-
-const require = createRequire(import.meta.url);
-const cppParserState = await initParser();
-
-function resolveWasmPath(pkgName: string, fileName: string): string | null {
-  try {
-    const pkgRoot = path.dirname(require.resolve(`${pkgName}/package.json`));
-    const wasmPath = path.join(pkgRoot, fileName);
-    return fs.existsSync(wasmPath) ? wasmPath : null;
-  } catch {
-    return null;
-  }
+function ensureWritableTypeProperty(): void {
+  const syntaxNode = (Parser as unknown as { SyntaxNode?: { prototype?: object } })
+    .SyntaxNode;
+  const proto = syntaxNode?.prototype;
+  if (!proto) return;
+  const desc = Object.getOwnPropertyDescriptor(proto, "type");
+  if (!desc || desc.set) return;
+  Object.defineProperty(proto, "type", { ...desc, set: () => {} });
 }
 
-function findPackageRoot(startDir: string): string {
-  let current = startDir;
-  while (true) {
-    if (fs.existsSync(path.join(current, "package.json"))) return current;
-    const parent = path.dirname(current);
-    if (parent === current) return startDir;
-    current = parent;
-  }
-}
+// Bun may run modules in strict mode, so make SyntaxNode.type writable to
+// avoid tree-sitter's prototype assignment error.
+ensureWritableTypeProperty();
 
-function resolveCppWasmPath(): string {
-  const envPath =
-    process.env.CODEMAP_CPP_WASM ?? process.env.TREE_SITTER_CPP_WASM;
-  if (envPath && fs.existsSync(envPath)) return envPath;
-
-  const moduleDir = path.dirname(fileURLToPath(import.meta.url));
-  const packageRoot = findPackageRoot(moduleDir);
-  const execRoot = findPackageRoot(path.dirname(process.execPath));
-  const candidatePaths = [
-    path.join(packageRoot, "assets", "tree-sitter-cpp.wasm"),
-    path.join(packageRoot, "tree-sitter-cpp.wasm"),
-    path.join(execRoot, "assets", "tree-sitter-cpp.wasm"),
-    path.join(execRoot, "tree-sitter-cpp.wasm"),
-  ];
-
-  for (const candidate of candidatePaths) {
-    if (fs.existsSync(candidate)) return candidate;
-  }
-
-  const fallback = resolveWasmPath("tree-sitter-cpp", "tree-sitter-cpp.wasm");
-  if (fallback) return fallback;
-  throw new Error("Missing WASM asset: tree-sitter-cpp.wasm");
-}
-
-async function initParser(): Promise<ParserState> {
-  const runtimeWasm = resolveRuntimeWasmPath();
-  await Parser.init({
-    locateFile: (name: string) =>
-      name === "tree-sitter.wasm" ? runtimeWasm : name,
-  });
-
-  const cppWasm = resolveCppWasmPath();
-  const language = await Parser.Language.load(cppWasm);
-  const parser = new Parser();
-  parser.setLanguage(language);
-
-  return { parser, language };
-}
-
-function resolveRuntimeWasmPath(): string {
-  const envPath =
-    process.env.CODEMAP_TREE_SITTER_WASM ?? process.env.TREE_SITTER_WASM;
-  if (envPath && fs.existsSync(envPath)) return envPath;
-
-  const moduleDir = path.dirname(fileURLToPath(import.meta.url));
-  const packageRoot = findPackageRoot(moduleDir);
-  const execRoot = findPackageRoot(path.dirname(process.execPath));
-  const candidatePaths = [
-    path.join(packageRoot, "assets", "tree-sitter.wasm"),
-    path.join(packageRoot, "tree-sitter.wasm"),
-    path.join(execRoot, "assets", "tree-sitter.wasm"),
-    path.join(execRoot, "tree-sitter.wasm"),
-  ];
-
-  for (const candidate of candidatePaths) {
-    if (fs.existsSync(candidate)) return candidate;
-  }
-
-  const fallback = resolveWasmPath("web-tree-sitter", "tree-sitter.wasm");
-  if (fallback) return fallback;
-  throw new Error("Missing WASM asset: tree-sitter.wasm");
-}
+const parser = new Parser();
+parser.setLanguage(CPP);
 
 function normalizeWhitespace(value: string): string {
   return value.replace(/\s+/g, " ").trim();
@@ -294,7 +217,6 @@ export function extractCppSymbols(
   content: string,
   opts?: { includeComments?: boolean },
 ): { symbols: SymbolEntry[]; includes: IncludeSpec[] } {
-  const { parser } = cppParserState;
   const tree = parser.parse(content);
   const symbols: SymbolEntry[] = [];
   const includes = extractIncludes(content);
