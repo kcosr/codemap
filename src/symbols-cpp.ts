@@ -479,7 +479,10 @@ export function extractCppSymbols(
     }
 
     const access = classScope?.access;
-    const exported = parentName && classScope ? access === "public" : true;
+    const isStatic = isStaticSignature(signature);
+    // Class members: use access specifier (public = exported)
+    // Free functions: static keyword means internal linkage (not exported)
+    const exported = classScope ? access === "public" : !isStatic;
     const { startLine, endLine } = getLineRange(node);
 
     addSymbol({

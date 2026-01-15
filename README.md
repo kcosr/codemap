@@ -4,9 +4,27 @@ Codemap generates a compact, token-aware map of a codebase: files, symbols, and 
 
 ## Supported Languages
 
-- **TypeScript/JavaScript**: Full symbol extraction (functions, classes, interfaces, types, variables, methods, etc.)
+- **TypeScript/JavaScript**: Full symbol extraction (functions, classes, interfaces, types, variables, methods, etc.) and cross-file reference tracking
+- **C/C++**: Symbol extraction (namespaces, classes, structs, methods, fields, enums) and `#include` dependency tracking
 - **Markdown**: Headings and code block ranges
 - **Other files**: Listed with line counts (no symbol extraction)
+
+### C++ Notes
+
+C++ support uses [tree-sitter-cpp](https://github.com/tree-sitter/tree-sitter-cpp) for parsing.
+
+**`[exported]` marker meaning:**
+- Class members: `[exported]` = `public` access
+- Free functions: `[exported]` = external linkage (no `static` keyword)
+- `static` functions have internal linkage and are NOT marked exported
+
+**Limitations:**
+- **Node.js only**: C++ extraction is disabled when running under Bun (tree-sitter native modules don't work with Bun)
+- **No cross-file references**: Reference commands (`find-refs`, `callers`, `call-graph`) only work for TypeScript/JavaScript
+- **Include resolution**: Local includes (`"header.hpp"`) are resolved relative to the source file; system includes (`<vector>`) are tracked but not resolved
+- **Declaration-only**: Extracts declarations from headers; doesn't follow includes to build full type information
+
+To disable C++ support (faster startup if not needed): `CODEMAP_DISABLE_CPP=1`
 
 ## Install
 
