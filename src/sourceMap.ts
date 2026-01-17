@@ -20,6 +20,7 @@ import {
 } from "./languages.js";
 import { extractFileSymbols, extractFileSymbolsDetailed } from "./symbols.js";
 import { extractCppSymbols } from "./symbols-cpp.js";
+import { extractRustSymbols } from "./symbols-rust.js";
 import { extractMarkdownStructure } from "./markdown.js";
 import { computeStats } from "./stats.js";
 import { renderFileEntry } from "./render.js";
@@ -45,6 +46,11 @@ import {
   resolveIncludes,
   type CppResolverContext,
 } from "./deps/cpp-resolver.js";
+import {
+  createRustResolverContext,
+  resolveUseStatements,
+  type RustResolverContext,
+} from "./deps/rust-resolver.js";
 import type { IncludeSpec } from "./deps/extract-includes.js";
 import {
   detectChanges,
@@ -190,6 +196,7 @@ function extractFileForCache(
   file: DiscoveredFile,
   resolverContext: ResolverContext,
   cppResolverContext: CppResolverContext,
+  rustResolverContext: RustResolverContext,
 ): Extracted | null {
   let buf: Buffer;
   let content: string;
@@ -251,6 +258,34 @@ function extractFileForCache(
         file.path,
         extracted.includes,
         cppResolverContext,
+      );
+    } else if (language === "rust") {
+      const extracted = extractRustSymbols(file.path, content, {
+        includeComments: true,
+      });
+      symbols = extracted.symbols.map((sym) => ({
+        path: file.path,
+        name: sym.name,
+        kind: sym.kind,
+        signature: sym.signature,
+        start_line: sym.startLine,
+        end_line: sym.endLine,
+        exported: sym.exported ? 1 : 0,
+        is_default: sym.isDefault ? 1 : 0,
+        is_async: sym.isAsync ? 1 : 0,
+        is_static: sym.isStatic ? 1 : 0,
+        is_abstract: sym.isAbstract ? 1 : 0,
+        parent_name: sym.parentName ?? null,
+        jsdoc: sym.comment ?? null,
+      }));
+      imports = extracted.useStatements.map((use) => ({
+        path: file.path,
+        source: use.isGlob ? `${use.source}::*` : use.source,
+      }));
+      resolvedImports = resolveUseStatements(
+        file.path,
+        extracted.useStatements,
+        rustResolverContext,
       );
     } else {
       const extracted = extractFileSymbolsDetailed(file.path, content, {
@@ -454,6 +489,7 @@ function updateCache(
   touches: FileTouch[],
   resolverContext: ResolverContext,
   cppResolverContext: CppResolverContext,
+  rustResolverContext: RustResolverContext,
 ): void {
   if (touches.length > 0) {
     const applyTouches = db.transaction(() => {
@@ -484,7 +520,12 @@ function updateCache(
       }
       extractedByPath.set(
         change.path,
-        extractFileForCache(file, resolverContext, cppResolverContext),
+        extractFileForCache(
+          file,
+          resolverContext,
+          cppResolverContext,
+          rustResolverContext,
+        ),
       );
     }
   }
@@ -673,8 +714,17 @@ export function refreshCache(
     useTsconfig: opts.useTsconfig,
   });
   const cppResolverContext = createCppResolverContext(repoRoot, fileIndex);
+  const rustResolverContext = createRustResolverContext(repoRoot, fileIndex);
 
-  updateCache(db, discovered, changes, touches, resolverContext, cppResolverContext);
+  updateCache(
+    db,
+    discovered,
+    changes,
+    touches,
+    resolverContext,
+    cppResolverContext,
+    rustResolverContext,
+  );
 
   if (opts.refsMode) {
     updateReferences(db, {

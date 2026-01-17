@@ -28,6 +28,9 @@ const EXTENSION_MAP: Record<string, Language> = {
   ".hh": "cpp",
   ".h++": "cpp",
   ".h": "cpp",
+
+  // Rust
+  ".rs": "rust",
 };
 
 const isBun = typeof (globalThis as any).Bun !== "undefined";
@@ -38,7 +41,7 @@ export function detectLanguage(filePath: string): Language {
 }
 
 export function canExtractSymbols(language: Language): boolean {
-  if (language === "cpp") return !isBun;
+  if (language === "cpp" || language === "rust") return !isBun;
   return language === "typescript" || language === "javascript";
 }
 

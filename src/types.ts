@@ -3,6 +3,7 @@ export type Language =
   | "javascript"
   | "markdown"
   | "cpp"
+  | "rust"
   | "other";
 
 export type SymbolKind =
@@ -20,7 +21,9 @@ export type SymbolKind =
   | "setter"
   | "namespace"
   | "struct"
-  | "destructor";
+  | "destructor"
+  | "trait"
+  | "macro";
 
 export type ReferenceKind =
   | "import"

@@ -1,6 +1,6 @@
 import type { Database as DB } from "./sqlite.js";
 
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 const MIGRATION_1 = `
 CREATE TABLE IF NOT EXISTS meta (
@@ -298,6 +298,111 @@ CREATE INDEX IF NOT EXISTS idx_symbols_lookup ON symbols(path, parent_name, kind
 PRAGMA foreign_keys=ON;
 `;
 
+const MIGRATION_5 = `
+PRAGMA foreign_keys=OFF;
+
+CREATE TABLE IF NOT EXISTS files_new (
+  path TEXT PRIMARY KEY,
+  mtime INTEGER NOT NULL,
+  size INTEGER NOT NULL,
+  hash TEXT NOT NULL,
+  language TEXT NOT NULL CHECK(language IN ('typescript','javascript','markdown','cpp','rust','other')),
+  line_count INTEGER NOT NULL,
+  extractor_version TEXT NOT NULL DEFAULT '1',
+  updated_at TEXT NOT NULL
+);
+
+INSERT INTO files_new (
+  path,
+  mtime,
+  size,
+  hash,
+  language,
+  line_count,
+  extractor_version,
+  updated_at
+)
+SELECT
+  path,
+  mtime,
+  size,
+  hash,
+  language,
+  line_count,
+  extractor_version,
+  updated_at
+FROM files;
+
+DROP TABLE files;
+ALTER TABLE files_new RENAME TO files;
+
+CREATE TABLE IF NOT EXISTS symbols_new (
+  id INTEGER PRIMARY KEY,
+  path TEXT NOT NULL,
+  name TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK(kind IN (
+    'function','class','interface','type','variable','enum','enum_member',
+    'method','property','constructor','getter','setter',
+    'namespace','struct','destructor','trait','macro'
+  )),
+  signature TEXT,
+  start_line INTEGER NOT NULL,
+  end_line INTEGER NOT NULL,
+  exported INTEGER NOT NULL DEFAULT 0,
+  is_default INTEGER NOT NULL DEFAULT 0,
+  is_async INTEGER NOT NULL DEFAULT 0,
+  is_static INTEGER NOT NULL DEFAULT 0,
+  is_abstract INTEGER NOT NULL DEFAULT 0,
+  parent_name TEXT,
+  jsdoc TEXT,
+  FOREIGN KEY (path) REFERENCES files(path) ON DELETE CASCADE
+);
+
+INSERT INTO symbols_new (
+  id,
+  path,
+  name,
+  kind,
+  signature,
+  start_line,
+  end_line,
+  exported,
+  is_default,
+  is_async,
+  is_static,
+  is_abstract,
+  parent_name,
+  jsdoc
+)
+SELECT
+  id,
+  path,
+  name,
+  kind,
+  signature,
+  start_line,
+  end_line,
+  exported,
+  is_default,
+  is_async,
+  is_static,
+  is_abstract,
+  parent_name,
+  jsdoc
+FROM symbols;
+
+DROP TABLE symbols;
+ALTER TABLE symbols_new RENAME TO symbols;
+
+CREATE INDEX IF NOT EXISTS idx_symbols_path ON symbols(path);
+CREATE INDEX IF NOT EXISTS idx_symbols_name ON symbols(name);
+CREATE INDEX IF NOT EXISTS idx_symbols_kind ON symbols(kind);
+CREATE INDEX IF NOT EXISTS idx_symbols_parent ON symbols(parent_name);
+CREATE INDEX IF NOT EXISTS idx_symbols_lookup ON symbols(path, parent_name, kind, name);
+
+PRAGMA foreign_keys=ON;
+`;
+
 export function migrate(db: DB): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -337,6 +442,12 @@ export function migrate(db: DB): void {
       db.prepare(
         "INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)",
       ).run(4, new Date().toISOString());
+    }
+    if (currentVersion < 5) {
+      db.exec(MIGRATION_5);
+      db.prepare(
+        "INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)",
+      ).run(5, new Date().toISOString());
     }
   });
 

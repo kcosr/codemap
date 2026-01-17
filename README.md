@@ -6,6 +6,7 @@ Codemap generates a compact, token-aware map of a codebase: files, symbols, and 
 
 - **TypeScript/JavaScript**: Full symbol extraction (functions, classes, interfaces, types, variables, methods, etc.) and cross-file reference tracking
 - **C/C++**: Symbol extraction (namespaces, classes, structs, methods, fields, enums) and `#include` dependency tracking
+- **Rust**: Symbol extraction (modules, traits, structs, enums, impl methods, macros) and basic `use` dependency tracking
 - **Markdown**: Headings and code block ranges
 - **Other files**: Listed with line counts (no symbol extraction)
 
@@ -18,6 +19,15 @@ C++ support uses [tree-sitter-cpp](https://github.com/tree-sitter/tree-sitter-cp
 - **Declaration-only**: Extracts declarations from headers; doesn't follow includes to build full type information
 
 To disable C++ support (faster startup if not needed): `CODEMAP_DISABLE_CPP=1`
+
+### Rust Limitations
+
+Rust support uses [tree-sitter-rust](https://github.com/tree-sitter/tree-sitter-rust) for parsing.
+- **Node.js only**: Rust extraction is disabled when running under Bun (tree-sitter native modules don't work with Bun)
+- **No cross-file references**: Reference commands (`find-refs`, `callers`, `call-graph`) only work for TypeScript/JavaScript
+- **Basic module resolution**: `use` statements resolve `crate::`, `self::`, and `super::` paths; external crates are tracked as external dependencies
+
+To disable Rust support (faster startup if not needed): `CODEMAP_DISABLE_RUST=1`
 
 ## Install
 
