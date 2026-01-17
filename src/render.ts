@@ -14,10 +14,12 @@ const GROUP_ORDER: SymbolKind[] = [
   "namespace",
   "class",
   "struct",
+  "trait",
   "enum",
   "interface",
   "type",
   "function",
+  "macro",
   "variable",
 ];
 
@@ -27,6 +29,7 @@ const CONTAINER_KINDS = new Set<SymbolKind>([
   "struct",
   "enum",
   "interface",
+  "trait",
 ]);
 
 function buildSymbolKey(sym: SymbolEntry): string {
@@ -130,7 +133,8 @@ function formatSymbolLabel(sym: SymbolEntry, level: DetailLevel): string {
     sym.kind === "interface" ||
     sym.kind === "enum" ||
     sym.kind === "struct" ||
-    sym.kind === "namespace"
+    sym.kind === "namespace" ||
+    sym.kind === "trait"
   ) {
     const sig = sym.signature || sym.name;
     return new RegExp(`\\b${sym.kind}\\b`).test(sig) ? sig : `${sym.kind} ${sig}`;

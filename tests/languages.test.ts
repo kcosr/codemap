@@ -10,6 +10,7 @@ describe("languages", () => {
     expect(detectLanguage("src/app.ts")).toBe("typescript");
     expect(detectLanguage("src/app.jsx")).toBe("javascript");
     expect(detectLanguage("docs/readme.md")).toBe("markdown");
+    expect(detectLanguage("src/lib.rs")).toBe("rust");
     expect(detectLanguage("data/file.txt")).toBe("other");
   });
 
@@ -19,6 +20,7 @@ describe("languages", () => {
     expect(canExtractSymbols("typescript")).toBe(true);
     expect(canExtractSymbols("javascript")).toBe(true);
     expect(canExtractSymbols("cpp")).toBe(!isBun);
+    expect(canExtractSymbols("rust")).toBe(!isBun);
     expect(canExtractSymbols("markdown")).toBe(false);
     expect(canExtractSymbols("other")).toBe(false);
 

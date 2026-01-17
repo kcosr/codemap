@@ -6,6 +6,8 @@
 
 ### Added
 
+- Rust language support with symbol extraction and basic `use` dependency tracking. ([#5](https://github.com/kcosr/codemap/pull/5))
+
 ### Changed
 
 ### Fixed

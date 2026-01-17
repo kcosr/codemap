@@ -21,6 +21,7 @@ import type { ImportSpec, SymbolEntry } from "./types.js";
 import { extractImportSpecs } from "./deps/extract-imports.js";
 import { detectLanguage } from "./languages.js";
 import { extractCppSymbols } from "./symbols-cpp.js";
+import { extractRustSymbols } from "./symbols-rust.js";
 import type { IncludeSpec } from "./deps/extract-includes.js";
 
 let project: Project | null = null;
@@ -580,6 +581,15 @@ export function extractFileSymbols(
     return {
       symbols: extracted.symbols,
       imports: extracted.includes.map(formatIncludeSource),
+    };
+  }
+  if (language === "rust") {
+    const extracted = extractRustSymbols(filePath, content, opts);
+    return {
+      symbols: extracted.symbols,
+      imports: extracted.useStatements.map((use) =>
+        use.isGlob ? `${use.source}::*` : use.source,
+      ),
     };
   }
   const extracted = extractFileSymbolsDetailed(filePath, content, opts);
