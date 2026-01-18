@@ -8,6 +8,8 @@
 
 ### Changed
 
+- Downgraded `tree-sitter-rust` to `^0.23.0` to avoid peer dependency conflicts. ([#6](https://github.com/kcosr/codemap/pull/6))
+
 ### Fixed
 
 ### Removed
