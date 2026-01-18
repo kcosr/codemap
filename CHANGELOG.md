@@ -8,6 +8,8 @@
 
 ### Changed
 
+- Pinned `tree-sitter-rust` to `0.23.1` to avoid peer dependency conflicts without legacy install flags. ([#7](https://github.com/kcosr/codemap/pull/7))
+
 ### Fixed
 
 ### Removed
