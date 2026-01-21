@@ -1,8 +1,8 @@
 import type { FileEntry, ProjectStats } from "./types.js";
 
 export function computeStats(files: FileEntry[]): ProjectStats {
-  const byLanguage: Record<string, number> = {};
-  const bySymbolKind: Record<string, number> = {};
+  const byLanguage: Record<string, number> = Object.create(null);
+  const bySymbolKind: Record<string, number> = Object.create(null);
   let totalSymbols = 0;
 
   const countSymbol = (sym: FileEntry["symbols"][number]): void => {
