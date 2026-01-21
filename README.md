@@ -65,6 +65,12 @@ Codemap output is designed to give agents a quick overview of your codebase stru
 
 See [examples/chat-answer-no-file-reads.txt](examples/chat-answer-no-file-reads.txt) for a real session where an agent answers questions about the codebase using only the codemap output (no file reads needed).
 
+### Pi Coding Agent Extension
+
+If you use [pi](https://github.com/mariozechner/pi-coding-agent), there's a companion extension that provides an interactive file picker for codemap:
+
+**[pi-extensions/codemap](https://github.com/kcosr/pi-extensions/tree/main/codemap)** - Browse and select files/directories, configure options, and run codemap directly from pi with `/codemap`.
+
 ### Building a Prompt File
 
 The safest approach is to build a prompt file, then pass it to your agent:
