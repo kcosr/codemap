@@ -49,7 +49,7 @@ npm run build:bun
 # Map the current directory
 codemap
 
-# Map specific files
+# Map specific files (always quote glob patterns!)
 codemap "src/**/*.ts"
 
 # Fit output to a token budget (auto-reduces detail)
@@ -652,6 +652,20 @@ db.close();
 ```
 
 ## Tips
+
+### Quote Your Glob Patterns
+
+Always quote glob patterns to prevent shell expansion:
+
+```bash
+# Correct - codemap handles the glob
+codemap "src/**/*.ts"
+
+# Wrong - shell expands ** before codemap sees it
+codemap src/**/*.ts
+```
+
+Without quotes, most shells expand `**` non-recursively (same as `*`), causing codemap to miss files in subdirectories.
 
 ### Focusing on What Matters
 
