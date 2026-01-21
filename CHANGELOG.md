@@ -10,6 +10,9 @@
 
 ### Fixed
 
+- Fixed stats counter bug where `constructor` symbol kind displayed as `constructor: function Object() { [native code] }1` due to inherited Object prototype property. ([#8](https://github.com/kcosr/codemap/pull/8))
+- Added documentation about quoting glob patterns to prevent shell expansion. ([#8](https://github.com/kcosr/codemap/pull/8))
+
 ### Removed
 
 ## [0.1.2] - 2026-01-18
