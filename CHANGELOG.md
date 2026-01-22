@@ -10,6 +10,8 @@
 
 ### Fixed
 
+- Added missing -b flag for --budget
+
 ### Removed
 
 ## [0.1.3] - 2026-01-21
