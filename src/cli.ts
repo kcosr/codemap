@@ -570,6 +570,7 @@ const cli = yargs(hideBin(process.argv))
           describe: "Output format",
         })
         .option("budget", {
+          alias: "b",
           type: "number",
           describe: "Token budget (auto-reduces detail to fit)",
         })

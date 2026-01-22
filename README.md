@@ -155,7 +155,7 @@ Patterns:
 Options:
   -C, --dir              Target directory (default: cwd)
   -o, --output           Output format: text | json (default: text)
-  --budget               Token budget (auto-reduces detail to fit)
+  -b, --budget           Token budget (auto-reduces detail to fit)
   --ignore               Ignore patterns (repeatable)
   --exported-only        Only include exported symbols
   --no-comments          Exclude JSDoc comments
