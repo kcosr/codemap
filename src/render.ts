@@ -389,22 +389,23 @@ export function renderText(
   const lines: string[] = [];
   const summaryOnly = opts.summaryOnly ?? false;
   const includeStats = opts.includeStats || summaryOnly;
-  const showHeader = Boolean(result.stats && includeStats);
+  const stats = result.stats;
+  const showHeader = Boolean(stats && includeStats);
 
-  if (showHeader) {
+  if (stats && includeStats) {
     lines.push("# Project Overview");
     lines.push("");
     lines.push("## Languages");
-    for (const [lang, count] of Object.entries(result.stats.byLanguage).sort(
+    for (const [lang, count] of Object.entries(stats.byLanguage).sort(
       (a, b) => b[1] - a[1],
     )) {
       lines.push(`- ${lang}: ${count} files`);
     }
     lines.push("");
     lines.push("## Statistics");
-    lines.push(`- Total files: ${result.stats.totalFiles}`);
-    lines.push(`- Total symbols: ${result.stats.totalSymbols}`);
-    for (const [kind, count] of Object.entries(result.stats.bySymbolKind).sort(
+    lines.push(`- Total files: ${stats.totalFiles}`);
+    lines.push(`- Total symbols: ${stats.totalSymbols}`);
+    for (const [kind, count] of Object.entries(stats.bySymbolKind).sort(
       (a, b) => b[1] - a[1],
     )) {
       lines.push(`  - ${kind}: ${count}`);
