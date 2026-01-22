@@ -8,6 +8,8 @@
 
 ### Changed
 
+- Markdown headings now include line ranges in output. ([#9](https://github.com/kcosr/codemap/pull/9))
+
 ### Fixed
 
 - Added missing -b flag for --budget
