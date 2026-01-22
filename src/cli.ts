@@ -604,6 +604,11 @@ const cli = yargs(hideBin(process.argv))
           default: true,
           describe: "Include project statistics",
         })
+        .option("stats-only", {
+          type: "boolean",
+          default: false,
+          describe: "Show summary statistics only (no file entries)",
+        })
         .option("annotations", {
           type: "boolean",
           default: true,
@@ -652,6 +657,8 @@ const cli = yargs(hideBin(process.argv))
 
       const output = argv.output === "json" ? "json" : "text";
       const refsOptions = resolveRefsOptions(argv as Record<string, unknown>);
+      const statsOnly = argv["stats-only"] === true;
+      const includeStats = statsOnly ? true : argv.stats !== false;
 
       const opts = {
         repoRoot: repoRoot,
@@ -661,11 +668,12 @@ const cli = yargs(hideBin(process.argv))
         includeImports: argv.imports !== false,
         includeHeadings: argv.headings !== false,
         includeCodeBlocks: argv["code-blocks"] !== false,
-        includeStats: argv.stats !== false,
+        includeStats,
         includeAnnotations: argv.annotations !== false,
         exportedOnly: argv["exported-only"],
         tokenBudget: argv.budget,
         output,
+        summaryOnly: statsOnly,
         forceRefresh: argv["no-cache"],
         useCache: true,
         tsconfigPath: argv.tsconfig
@@ -682,7 +690,7 @@ const cli = yargs(hideBin(process.argv))
       const result = generateSourceMap(opts);
 
       if (output === "json") {
-        console.log(renderJson(result));
+        console.log(renderJson(result, opts));
       } else {
         console.log(renderText(result, opts));
       }

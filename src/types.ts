@@ -196,4 +196,5 @@ export type SourceMapOptions = {
 
   // Output
   output: "text" | "json";
+  summaryOnly?: boolean;
 };

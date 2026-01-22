@@ -71,6 +71,7 @@ const DEFAULT_OPTIONS: Partial<SourceMapOptions> = {
   includeAnnotations: true,
   exportedOnly: false,
   output: "text",
+  summaryOnly: false,
   useCache: true,
   forceRefresh: false,
   useTsconfig: true,
@@ -651,7 +652,9 @@ function generateSourceMapNoCache(opts: SourceMapOptions): SourceMapResult {
   }
 
   const totalTokens = finalEntries.reduce((sum, e) => sum + e.tokenEstimate, 0);
-  const stats = opts.includeStats ? computeStats(finalEntries) : null;
+  const stats = opts.includeStats || opts.summaryOnly
+    ? computeStats(finalEntries)
+    : null;
 
   return {
     repoRoot: opts.repoRoot,
@@ -769,7 +772,9 @@ export function generateSourceMap(options: SourceMapOptions): SourceMapResult {
   }
 
   const totalTokens = finalEntries.reduce((sum, e) => sum + e.tokenEstimate, 0);
-  const stats = opts.includeStats ? computeStats(finalEntries) : null;
+  const stats = opts.includeStats || opts.summaryOnly
+    ? computeStats(finalEntries)
+    : null;
   const codebaseTokens = Math.ceil(db.getTotalCodebaseBytes() / 4);
 
   db.close();

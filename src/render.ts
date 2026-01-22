@@ -387,8 +387,11 @@ export function renderText(
   opts: SourceMapOptions,
 ): string {
   const lines: string[] = [];
+  const summaryOnly = opts.summaryOnly ?? false;
+  const includeStats = opts.includeStats || summaryOnly;
+  const showHeader = Boolean(result.stats && includeStats);
 
-  if (result.stats && opts.includeStats) {
+  if (showHeader) {
     lines.push("# Project Overview");
     lines.push("");
     lines.push("## Languages");
@@ -407,93 +410,109 @@ export function renderText(
       lines.push(`  - ${kind}: ${count}`);
     }
     lines.push("");
-    lines.push("---");
-    lines.push("");
+    if (!summaryOnly) {
+      lines.push("---");
+      lines.push("");
+    }
   }
 
-  for (const file of result.files) {
-    lines.push(renderFileEntry(file, opts));
-    lines.push("");
+  if (!summaryOnly) {
+    for (const file of result.files) {
+      lines.push(renderFileEntry(file, opts));
+      lines.push("");
+    }
   }
 
-  lines.push("---");
-  lines.push(`Files: ${result.files.length}`);
-  let tokenLine = `Estimated tokens: ${result.totalTokens.toLocaleString()}`;
-  if (result.codebaseTokens) {
-    tokenLine += ` (codebase: ~${result.codebaseTokens.toLocaleString()})`;
+  if (includeStats) {
+    if (showHeader || result.files.length > 0) {
+      lines.push("---");
+    }
+    lines.push(`Files: ${result.files.length}`);
+    let tokenLine = `Estimated tokens: ${result.totalTokens.toLocaleString()}`;
+    if (result.codebaseTokens) {
+      tokenLine += ` (codebase: ~${result.codebaseTokens.toLocaleString()})`;
+    }
+    lines.push(tokenLine);
   }
-  lines.push(tokenLine);
 
   return lines.join("\n");
 }
 
-export function renderJson(result: SourceMapResult): string {
+export function renderJson(
+  result: SourceMapResult,
+  opts?: Pick<SourceMapOptions, "includeStats" | "summaryOnly">,
+): string {
+  const includeStats = opts?.includeStats ?? true;
+  const summaryOnly = opts?.summaryOnly ?? false;
+
   return JSON.stringify(
     {
-      stats: result.stats,
-      total_tokens: result.totalTokens,
-      codebase_tokens: result.codebaseTokens ?? null,
-      files: result.files.map((f) => ({
-        path: f.path,
-        language: f.language,
-        lines: [f.startLine, f.endLine],
-        detail_level: f.detailLevel,
-        token_estimate: f.tokenEstimate,
-        symbols: f.symbols.map((s) => ({
-          name: s.name,
-          kind: s.kind,
-          signature: s.signature,
-          lines: [s.startLine, s.endLine],
-          exported: s.exported,
-          is_default: s.isDefault,
-          is_async: s.isAsync,
-          is_static: s.isStatic,
-          is_abstract: s.isAbstract,
-          parent_name: s.parentName ?? null,
-          annotation: s.annotation ?? null,
-          comment: s.comment ?? null,
-          incoming_refs: s.incomingRefs
-            ? {
-                total: s.incomingRefs.total,
-                sampled: s.incomingRefs.sampled,
-                by_kind: s.incomingRefs.byKind,
-                items: s.incomingRefs.items.map((item) => ({
-                  ref_path: item.refPath,
-                  ref_line: item.refLine,
-                  ref_col: item.refCol ?? null,
-                  symbol_path: item.symbolPath,
-                  symbol_name: item.symbolName,
-                  symbol_kind: item.symbolKind,
-                  symbol_parent: item.symbolParent ?? null,
-                  ref_kind: item.refKind,
-                  module_specifier: item.moduleSpecifier ?? null,
-                })),
-              }
-            : null,
-          outgoing_refs: s.outgoingRefs
-            ? {
-                total: s.outgoingRefs.total,
-                sampled: s.outgoingRefs.sampled,
-                by_kind: s.outgoingRefs.byKind,
-                items: s.outgoingRefs.items.map((item) => ({
-                  ref_path: item.refPath,
-                  ref_line: item.refLine,
-                  ref_col: item.refCol ?? null,
-                  symbol_path: item.symbolPath,
-                  symbol_name: item.symbolName,
-                  symbol_kind: item.symbolKind,
-                  symbol_parent: item.symbolParent ?? null,
-                  ref_kind: item.refKind,
-                  module_specifier: item.moduleSpecifier ?? null,
-                })),
-              }
-            : null,
-        })),
-        annotation: f.annotation ?? null,
-        headings: f.headings ?? null,
-        code_blocks: f.codeBlocks ?? null,
-        imports: f.imports,
-      })),
+      stats: includeStats ? result.stats : null,
+      total_tokens: includeStats ? result.totalTokens : null,
+      codebase_tokens: includeStats ? result.codebaseTokens ?? null : null,
+      files: summaryOnly
+        ? undefined
+        : result.files.map((f) => ({
+            path: f.path,
+            language: f.language,
+            lines: [f.startLine, f.endLine],
+            detail_level: f.detailLevel,
+            token_estimate: f.tokenEstimate,
+            symbols: f.symbols.map((s) => ({
+              name: s.name,
+              kind: s.kind,
+              signature: s.signature,
+              lines: [s.startLine, s.endLine],
+              exported: s.exported,
+              is_default: s.isDefault,
+              is_async: s.isAsync,
+              is_static: s.isStatic,
+              is_abstract: s.isAbstract,
+              parent_name: s.parentName ?? null,
+              annotation: s.annotation ?? null,
+              comment: s.comment ?? null,
+              incoming_refs: s.incomingRefs
+                ? {
+                    total: s.incomingRefs.total,
+                    sampled: s.incomingRefs.sampled,
+                    by_kind: s.incomingRefs.byKind,
+                    items: s.incomingRefs.items.map((item) => ({
+                      ref_path: item.refPath,
+                      ref_line: item.refLine,
+                      ref_col: item.refCol ?? null,
+                      symbol_path: item.symbolPath,
+                      symbol_name: item.symbolName,
+                      symbol_kind: item.symbolKind,
+                      symbol_parent: item.symbolParent ?? null,
+                      ref_kind: item.refKind,
+                      module_specifier: item.moduleSpecifier ?? null,
+                    })),
+                  }
+                : null,
+              outgoing_refs: s.outgoingRefs
+                ? {
+                    total: s.outgoingRefs.total,
+                    sampled: s.outgoingRefs.sampled,
+                    by_kind: s.outgoingRefs.byKind,
+                    items: s.outgoingRefs.items.map((item) => ({
+                      ref_path: item.refPath,
+                      ref_line: item.refLine,
+                      ref_col: item.refCol ?? null,
+                      symbol_path: item.symbolPath,
+                      symbol_name: item.symbolName,
+                      symbol_kind: item.symbolKind,
+                      symbol_parent: item.symbolParent ?? null,
+                      ref_kind: item.refKind,
+                      module_specifier: item.moduleSpecifier ?? null,
+                    })),
+                  }
+                : null,
+            })),
+            annotation: f.annotation ?? null,
+            headings: f.headings ?? null,
+            code_blocks: f.codeBlocks ?? null,
+            imports: f.imports,
+          })),
     },
     null,
     2,
