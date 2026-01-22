@@ -21,7 +21,7 @@ import {
 import { extractFileSymbols, extractFileSymbolsDetailed } from "./symbols.js";
 import { extractCppSymbols } from "./symbols-cpp.js";
 import { extractRustSymbols } from "./symbols-rust.js";
-import { extractMarkdownStructure } from "./markdown.js";
+import { applyHeadingRanges, extractMarkdownStructure } from "./markdown.js";
 import { computeStats } from "./stats.js";
 import { renderFileEntry } from "./render.js";
 import {
@@ -443,6 +443,10 @@ function buildEntriesFromCache(
         }))
       : undefined;
 
+    const headingsWithRanges = headingsRaw
+      ? applyHeadingRanges(headingsRaw, fileRow.line_count)
+      : undefined;
+
     const codeBlocksRaw = opts.includeCodeBlocks
       ? db.getCodeBlocks(relPath).map((cb) => ({
           language: cb.language,
@@ -452,9 +456,9 @@ function buildEntriesFromCache(
       : undefined;
 
     const headings =
-      headingsRaw &&
-      (headingsRaw.length > 0 || fileRow.language === "markdown")
-        ? headingsRaw
+      headingsWithRanges &&
+      (headingsWithRanges.length > 0 || fileRow.language === "markdown")
+        ? headingsWithRanges
         : undefined;
     const codeBlocks =
       codeBlocksRaw &&

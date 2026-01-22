@@ -79,6 +79,7 @@ export type MarkdownHeading = {
   level: number;
   text: string;
   line: number;
+  endLine: number;
 };
 
 export type MarkdownCodeBlock = {

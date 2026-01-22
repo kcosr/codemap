@@ -160,7 +160,7 @@ Options:
   --exported-only        Only include exported symbols
   --no-comments          Exclude JSDoc comments
   --no-imports           Exclude import lists
-  --no-headings          Exclude markdown headings
+  --no-headings          Exclude markdown headings (shown with line ranges)
   --no-code-blocks       Exclude markdown code block ranges
   --no-stats             Exclude project statistics header
   --no-annotations       Exclude annotations from output

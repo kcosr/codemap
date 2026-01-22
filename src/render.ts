@@ -355,7 +355,7 @@ export function renderFileEntry(
     lines.push("  headings:");
     for (const h of file.headings) {
       const prefix = "#".repeat(h.level);
-      lines.push(`    ${h.line}: ${prefix} ${h.text}`);
+      lines.push(`    ${h.line}-${h.endLine}: ${prefix} ${h.text}`);
     }
   }
 

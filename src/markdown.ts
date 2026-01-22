@@ -5,9 +5,27 @@ export type MarkdownStructure = {
   codeBlocks: MarkdownCodeBlock[];
 };
 
+type HeadingSeed = Pick<MarkdownHeading, "level" | "text" | "line">;
+
+export function applyHeadingRanges(
+  headings: HeadingSeed[],
+  totalLines: number,
+): MarkdownHeading[] {
+  return headings.map((heading, index) => {
+    let endLine = totalLines;
+    for (let next = index + 1; next < headings.length; next++) {
+      if (headings[next].level <= heading.level) {
+        endLine = Math.max(heading.line, headings[next].line - 1);
+        break;
+      }
+    }
+    return { ...heading, endLine };
+  });
+}
+
 export function extractMarkdownStructure(content: string): MarkdownStructure {
   const lines = content.split(/\r?\n/);
-  const headings: MarkdownHeading[] = [];
+  const headings: HeadingSeed[] = [];
   const codeBlocks: MarkdownCodeBlock[] = [];
 
   let inCodeBlock = false;
@@ -46,5 +64,7 @@ export function extractMarkdownStructure(content: string): MarkdownStructure {
     }
   }
 
-  return { headings, codeBlocks };
+  const headingsWithRanges = applyHeadingRanges(headings, lines.length);
+
+  return { headings: headingsWithRanges, codeBlocks };
 }
