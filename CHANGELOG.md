@@ -4,7 +4,7 @@
 
 ### Added
 
-- Added --stats-only to show summary stats without file entries. ([#9](https://github.com/kcosr/codemap/pull/9))
+- Added --stats-only to show summary stats without file entries for pi plugin "dry run" command. ([#9](https://github.com/kcosr/codemap/pull/9))
 
 ### Changed
 
