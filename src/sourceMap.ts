@@ -21,7 +21,7 @@ import {
 import { extractFileSymbols, extractFileSymbolsDetailed } from "./symbols.js";
 import { extractCppSymbols } from "./symbols-cpp.js";
 import { extractRustSymbols } from "./symbols-rust.js";
-import { extractMarkdownStructure } from "./markdown.js";
+import { applyHeadingRanges, extractMarkdownStructure } from "./markdown.js";
 import { computeStats } from "./stats.js";
 import { renderFileEntry } from "./render.js";
 import {
@@ -71,6 +71,7 @@ const DEFAULT_OPTIONS: Partial<SourceMapOptions> = {
   includeAnnotations: true,
   exportedOnly: false,
   output: "text",
+  summaryOnly: false,
   useCache: true,
   forceRefresh: false,
   useTsconfig: true,
@@ -443,6 +444,10 @@ function buildEntriesFromCache(
         }))
       : undefined;
 
+    const headingsWithRanges = headingsRaw
+      ? applyHeadingRanges(headingsRaw, fileRow.line_count)
+      : undefined;
+
     const codeBlocksRaw = opts.includeCodeBlocks
       ? db.getCodeBlocks(relPath).map((cb) => ({
           language: cb.language,
@@ -452,9 +457,9 @@ function buildEntriesFromCache(
       : undefined;
 
     const headings =
-      headingsRaw &&
-      (headingsRaw.length > 0 || fileRow.language === "markdown")
-        ? headingsRaw
+      headingsWithRanges &&
+      (headingsWithRanges.length > 0 || fileRow.language === "markdown")
+        ? headingsWithRanges
         : undefined;
     const codeBlocks =
       codeBlocksRaw &&
@@ -647,7 +652,9 @@ function generateSourceMapNoCache(opts: SourceMapOptions): SourceMapResult {
   }
 
   const totalTokens = finalEntries.reduce((sum, e) => sum + e.tokenEstimate, 0);
-  const stats = opts.includeStats ? computeStats(finalEntries) : null;
+  const stats = opts.includeStats || opts.summaryOnly
+    ? computeStats(finalEntries)
+    : null;
 
   return {
     repoRoot: opts.repoRoot,
@@ -765,7 +772,9 @@ export function generateSourceMap(options: SourceMapOptions): SourceMapResult {
   }
 
   const totalTokens = finalEntries.reduce((sum, e) => sum + e.tokenEstimate, 0);
-  const stats = opts.includeStats ? computeStats(finalEntries) : null;
+  const stats = opts.includeStats || opts.summaryOnly
+    ? computeStats(finalEntries)
+    : null;
   const codebaseTokens = Math.ceil(db.getTotalCodebaseBytes() / 4);
 
   db.close();

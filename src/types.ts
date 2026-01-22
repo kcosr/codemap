@@ -79,6 +79,7 @@ export type MarkdownHeading = {
   level: number;
   text: string;
   line: number;
+  endLine: number;
 };
 
 export type MarkdownCodeBlock = {
@@ -195,4 +196,5 @@ export type SourceMapOptions = {
 
   // Output
   output: "text" | "json";
+  summaryOnly?: boolean;
 };

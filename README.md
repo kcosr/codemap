@@ -160,9 +160,10 @@ Options:
   --exported-only        Only include exported symbols
   --no-comments          Exclude JSDoc comments
   --no-imports           Exclude import lists
-  --no-headings          Exclude markdown headings
+  --no-headings          Exclude markdown headings (shown with line ranges)
   --no-code-blocks       Exclude markdown code block ranges
-  --no-stats             Exclude project statistics header
+  --no-stats             Exclude project statistics header and token summary
+  --stats-only           Show summary statistics only (no file entries)
   --no-annotations       Exclude annotations from output
   --refs                 Include references (incoming). Use --refs=full for read/write refs
   --refs-in              Include incoming references

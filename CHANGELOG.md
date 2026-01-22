@@ -2,90 +2,51 @@
 
 ## [Unreleased]
 
-### Breaking Changes
-
 ### Added
 
+- Added --stats-only to show summary stats without file entries for pi plugin "dry run" command. ([#9](https://github.com/kcosr/codemap/pull/9))
+
 ### Changed
+
+- Markdown headings now include line ranges in output. ([#9](https://github.com/kcosr/codemap/pull/9))
+- Updated --no-stats to suppress the token summary footer. ([#9](https://github.com/kcosr/codemap/pull/9))
 
 ### Fixed
 
 - Added missing -b flag for --budget
 
-### Removed
-
 ## [0.1.3] - 2026-01-21
-
-### Breaking Changes
-
-### Added
-
-### Changed
 
 ### Fixed
 
 - Fixed stats counter bug where `constructor` symbol kind displayed as `constructor: function Object() { [native code] }1` due to inherited Object prototype property. ([#8](https://github.com/kcosr/codemap/pull/8))
 - Added documentation about quoting glob patterns to prevent shell expansion. ([#8](https://github.com/kcosr/codemap/pull/8))
 
-### Removed
-
 ## [0.1.2] - 2026-01-18
-
-### Breaking Changes
-
-### Added
 
 ### Changed
 
 - Pinned `tree-sitter-rust` to `0.23.1` to avoid peer dependency conflicts without legacy install flags. ([#7](https://github.com/kcosr/codemap/pull/7))
 
-### Fixed
-
-### Removed
-
 ## [0.1.1] - 2026-01-18
-
-### Breaking Changes
-
-### Added
 
 ### Changed
 
 - Downgraded `tree-sitter-rust` to `^0.23.0` to avoid peer dependency conflicts. ([#6](https://github.com/kcosr/codemap/pull/6))
 
-### Fixed
-
-### Removed
-
 ## [0.1.0] - 2026-01-17
-
-### Breaking Changes
 
 ### Added
 
 - Rust language support with symbol extraction and basic `use` dependency tracking. ([#5](https://github.com/kcosr/codemap/pull/5))
 
-### Changed
-
-### Fixed
-
-### Removed
-
 ## [0.0.1] - 2026-01-15
-
-### Breaking Changes
 
 ### Added
 
 - C++ support via tree-sitter: symbol extraction (namespaces, classes, structs, methods, fields, enums, typedefs) and `#include` dependency tracking.
 - Local include resolution for C++ files in dependency graph (`codemap deps`).
 - Release scripts (`scripts/release.mjs`, `scripts/bump-version.mjs`) for automated versioning and changelog management.
-
-### Changed
-
-### Fixed
-
-### Removed
 
 ## [0.0.0] - 2026-01-15
 
