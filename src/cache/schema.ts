@@ -1,6 +1,6 @@
 import type { Database as DB } from "./sqlite.js";
 
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 const MIGRATION_1 = `
 CREATE TABLE IF NOT EXISTS meta (
@@ -403,6 +403,48 @@ CREATE INDEX IF NOT EXISTS idx_symbols_lookup ON symbols(path, parent_name, kind
 PRAGMA foreign_keys=ON;
 `;
 
+const MIGRATION_6 = `
+CREATE TABLE IF NOT EXISTS file_annotation_tags (
+  path TEXT NOT NULL,
+  tag_key TEXT NOT NULL,
+  tag_value TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (path, tag_key, tag_value)
+);
+
+CREATE TABLE IF NOT EXISTS symbol_annotation_tags (
+  path TEXT NOT NULL,
+  symbol_name TEXT NOT NULL,
+  symbol_kind TEXT NOT NULL,
+  parent_name TEXT,
+  signature TEXT NOT NULL DEFAULT '',
+  tag_key TEXT NOT NULL,
+  tag_value TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (
+    path,
+    symbol_name,
+    symbol_kind,
+    parent_name,
+    signature,
+    tag_key,
+    tag_value
+  )
+);
+
+CREATE INDEX IF NOT EXISTS idx_file_annotation_tags_key
+  ON file_annotation_tags(tag_key, tag_value);
+CREATE INDEX IF NOT EXISTS idx_file_annotation_tags_path
+  ON file_annotation_tags(path);
+
+CREATE INDEX IF NOT EXISTS idx_symbol_annotation_tags_key
+  ON symbol_annotation_tags(tag_key, tag_value);
+CREATE INDEX IF NOT EXISTS idx_symbol_annotation_tags_path
+  ON symbol_annotation_tags(path);
+`;
+
 export function migrate(db: DB): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -448,6 +490,12 @@ export function migrate(db: DB): void {
       db.prepare(
         "INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)",
       ).run(5, new Date().toISOString());
+    }
+    if (currentVersion < 6) {
+      db.exec(MIGRATION_6);
+      db.prepare(
+        "INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)",
+      ).run(6, new Date().toISOString());
     }
   });
 

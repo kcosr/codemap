@@ -55,6 +55,13 @@ export type ReferenceList = {
   items: ReferenceItem[];
 };
 
+export type TagEntry = {
+  key: string;
+  value: string;
+};
+
+export type TagMap = Record<string, string[]>;
+
 export type SymbolEntry = {
   id?: number;
   name: string;
@@ -70,6 +77,7 @@ export type SymbolEntry = {
   parentName?: string;
   comment?: string;
   annotation?: string;
+  tags?: TagMap;
   incomingRefs?: ReferenceList;
   outgoingRefs?: ReferenceList;
   children?: SymbolEntry[];
@@ -140,6 +148,7 @@ export type FileEntry = {
   startLine: number;
   endLine: number;
   annotation?: string;
+  tags?: TagMap;
   detailLevel: DetailLevel;
   symbols: SymbolEntry[];
   headings?: MarkdownHeading[];
@@ -180,6 +189,14 @@ export type SourceMapOptions = {
   includeStats: boolean;
   includeAnnotations: boolean;
   exportedOnly: boolean;
+  annotatedOnly?: boolean;
+  annotationsOnly?: boolean;
+  refresh?: boolean;
+  includeIgnored?: string[];
+  filterKinds?: SymbolKind[];
+  filterTagsAll?: TagEntry[];
+  filterTagsAny?: TagEntry[];
+  groupByTag?: string;
 
   // Budget
   tokenBudget?: number;

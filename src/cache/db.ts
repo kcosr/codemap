@@ -8,11 +8,27 @@ import {
   setFileAnnotation,
   removeFileAnnotation,
   listFileAnnotations,
+  listFileAnnotationTags,
+  getFileAnnotationTags,
+  addFileAnnotationTags,
+  removeFileAnnotationTags,
+  clearFileAnnotationTags,
   getSymbolAnnotation,
   setSymbolAnnotation,
   removeSymbolAnnotation,
   listSymbolAnnotations,
+  listSymbolAnnotationTags,
+  getSymbolAnnotationTagsMap,
+  addSymbolAnnotationTags,
+  removeSymbolAnnotationTags,
+  clearSymbolAnnotationTags,
   getSymbolAnnotationMap,
+  listTagCounts,
+  listUnannotatedFiles,
+  listOrphanedFileAnnotations,
+  listOrphanedFileAnnotationTags,
+  listOrphanedSymbolAnnotations,
+  listOrphanedSymbolAnnotationTags,
   countOrphanedAnnotations,
   pruneOrphanedAnnotations,
 } from "./annotations.js";
@@ -154,6 +170,13 @@ export class CacheDB {
     return map;
   }
 
+  listFiles(): string[] {
+    const rows = this.db
+      .prepare("SELECT path FROM files ORDER BY path")
+      .all() as Array<{ path: string }>;
+    return rows.map((row) => row.path);
+  }
+
   getFile(path: string): FileRow | undefined {
     return this.db
       .prepare(
@@ -196,6 +219,8 @@ export class CacheDB {
   clearAnnotations(): void {
     this.db.prepare("DELETE FROM file_annotations").run();
     this.db.prepare("DELETE FROM symbol_annotations").run();
+    this.db.prepare("DELETE FROM file_annotation_tags").run();
+    this.db.prepare("DELETE FROM symbol_annotation_tags").run();
   }
 
   insertSymbols(path: string, symbols: SymbolRow[]): void {
@@ -418,6 +443,34 @@ export class CacheDB {
     return listFileAnnotations(this.db, path);
   }
 
+  listFileAnnotationTags(
+    path?: string,
+  ): ReturnType<typeof listFileAnnotationTags> {
+    return listFileAnnotationTags(this.db, path);
+  }
+
+  getFileAnnotationTags(path: string): ReturnType<typeof getFileAnnotationTags> {
+    return getFileAnnotationTags(this.db, path);
+  }
+
+  addFileAnnotationTags(
+    path: string,
+    tags: Parameters<typeof addFileAnnotationTags>[2],
+  ): number {
+    return addFileAnnotationTags(this.db, path, tags);
+  }
+
+  removeFileAnnotationTags(
+    path: string,
+    tags: Parameters<typeof removeFileAnnotationTags>[2],
+  ): number {
+    return removeFileAnnotationTags(this.db, path, tags);
+  }
+
+  clearFileAnnotationTags(path: string): number {
+    return clearFileAnnotationTags(this.db, path);
+  }
+
   getSymbolAnnotation(
     key: Parameters<typeof getSymbolAnnotation>[1],
   ): string | null {
@@ -439,8 +492,74 @@ export class CacheDB {
     return listSymbolAnnotations(this.db, path);
   }
 
+  listSymbolAnnotationTags(
+    path?: string,
+  ): ReturnType<typeof listSymbolAnnotationTags> {
+    return listSymbolAnnotationTags(this.db, path);
+  }
+
+  getSymbolAnnotationTagsMap(
+    path: string,
+  ): ReturnType<typeof getSymbolAnnotationTagsMap> {
+    return getSymbolAnnotationTagsMap(this.db, path);
+  }
+
+  addSymbolAnnotationTags(
+    key: Parameters<typeof addSymbolAnnotationTags>[1],
+    tags: Parameters<typeof addSymbolAnnotationTags>[2],
+  ): number {
+    return addSymbolAnnotationTags(this.db, key, tags);
+  }
+
+  removeSymbolAnnotationTags(
+    key: Parameters<typeof removeSymbolAnnotationTags>[1],
+    tags: Parameters<typeof removeSymbolAnnotationTags>[2],
+  ): number {
+    return removeSymbolAnnotationTags(this.db, key, tags);
+  }
+
+  clearSymbolAnnotationTags(
+    key: Parameters<typeof clearSymbolAnnotationTags>[1],
+  ): number {
+    return clearSymbolAnnotationTags(this.db, key);
+  }
+
   getSymbolAnnotationMap(path: string): Map<string, string> {
     return getSymbolAnnotationMap(this.db, path);
+  }
+
+  listTagCounts(
+    opts?: Parameters<typeof listTagCounts>[1],
+  ): ReturnType<typeof listTagCounts> {
+    return listTagCounts(this.db, opts);
+  }
+
+  listUnannotatedFiles(): ReturnType<typeof listUnannotatedFiles> {
+    return listUnannotatedFiles(this.db);
+  }
+
+  listOrphanedFileAnnotations(): ReturnType<
+    typeof listOrphanedFileAnnotations
+  > {
+    return listOrphanedFileAnnotations(this.db);
+  }
+
+  listOrphanedFileAnnotationTags(): ReturnType<
+    typeof listOrphanedFileAnnotationTags
+  > {
+    return listOrphanedFileAnnotationTags(this.db);
+  }
+
+  listOrphanedSymbolAnnotations(): ReturnType<
+    typeof listOrphanedSymbolAnnotations
+  > {
+    return listOrphanedSymbolAnnotations(this.db);
+  }
+
+  listOrphanedSymbolAnnotationTags(): ReturnType<
+    typeof listOrphanedSymbolAnnotationTags
+  > {
+    return listOrphanedSymbolAnnotationTags(this.db);
   }
 
   countOrphanedAnnotations(): { file: number; symbol: number } {
