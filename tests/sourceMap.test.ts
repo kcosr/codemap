@@ -82,4 +82,36 @@ describe("generateSourceMap", () => {
 
     fs.rmSync(dir, { recursive: true, force: true });
   });
+
+  it("truncates file list when budget is smaller than outline output", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "codemap-"));
+    fs.mkdirSync(path.join(dir, "src"), { recursive: true });
+
+    for (let i = 0; i < 200; i += 1) {
+      fs.writeFileSync(path.join(dir, `file-${i}.txt`), "x\n");
+    }
+
+    const budget = 50;
+    const result = generateSourceMap({
+      repoRoot: dir,
+      includeComments: true,
+      includeImports: true,
+      includeHeadings: true,
+      includeCodeBlocks: true,
+      includeStats: true,
+      exportedOnly: false,
+      output: "text",
+      tokenBudget: budget,
+    });
+
+    expect(result.totalTokens).toBeLessThanOrEqual(budget);
+    expect(result.filesShown).toBeDefined();
+    expect(result.filesTotal).toBeDefined();
+    expect(result.filesOmitted).toBeDefined();
+    expect(result.filesShown).toBeLessThan(result.filesTotal ?? 0);
+    expect(result.files.length).toBe(result.filesShown);
+    expect(result.stats?.totalFiles).toBe(result.filesTotal);
+
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
 });

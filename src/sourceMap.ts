@@ -108,11 +108,19 @@ function estimateFileTokens(entry: FileEntry, opts: SourceMapOptions): number {
   return Math.ceil(rendered.length / 4);
 }
 
+type BudgetFitResult = {
+  entries: FileEntry[];
+  totalTokens: number;
+  filesTotal: number;
+  filesShown: number;
+  filesOmitted: number;
+};
+
 function fitToBudget(
   entries: FileEntry[],
   opts: SourceMapOptions,
   budget: number,
-): FileEntry[] {
+): BudgetFitResult {
   for (const entry of entries) {
     entry.tokenEstimate = estimateFileTokens(entry, opts);
   }
@@ -136,7 +144,28 @@ function fitToBudget(
     total -= oldEstimate - largest.tokenEstimate;
   }
 
-  return entries;
+  let finalEntries = entries;
+  let totalTokens = total;
+
+  if (total > budget) {
+    const trimmed: FileEntry[] = [];
+    let running = 0;
+    for (const entry of entries) {
+      if (running + entry.tokenEstimate > budget) break;
+      trimmed.push(entry);
+      running += entry.tokenEstimate;
+    }
+    finalEntries = trimmed;
+    totalTokens = running;
+  }
+
+  return {
+    entries: finalEntries,
+    totalTokens,
+    filesTotal: entries.length,
+    filesShown: finalEntries.length,
+    filesOmitted: entries.length - finalEntries.length,
+  };
 }
 
 function normalizeScopePatterns(
@@ -643,18 +672,26 @@ function generateSourceMapNoCache(opts: SourceMapOptions): SourceMapResult {
   }
 
   let finalEntries = entries;
+  let totalTokens = 0;
+  let filesTotal = entries.length;
+  let filesShown = entries.length;
+  let filesOmitted = 0;
+
   if (opts.tokenBudget) {
-    finalEntries = fitToBudget(entries, opts, opts.tokenBudget);
+    const budgetResult = fitToBudget(entries, opts, opts.tokenBudget);
+    finalEntries = budgetResult.entries;
+    totalTokens = budgetResult.totalTokens;
+    filesTotal = budgetResult.filesTotal;
+    filesShown = budgetResult.filesShown;
+    filesOmitted = budgetResult.filesOmitted;
   } else {
     for (const entry of finalEntries) {
       entry.tokenEstimate = estimateFileTokens(entry, opts);
     }
+    totalTokens = finalEntries.reduce((sum, e) => sum + e.tokenEstimate, 0);
   }
 
-  const totalTokens = finalEntries.reduce((sum, e) => sum + e.tokenEstimate, 0);
-  const stats = opts.includeStats || opts.summaryOnly
-    ? computeStats(finalEntries)
-    : null;
+  const stats = opts.includeStats || opts.summaryOnly ? computeStats(entries) : null;
 
   return {
     repoRoot: opts.repoRoot,
@@ -662,6 +699,9 @@ function generateSourceMapNoCache(opts: SourceMapOptions): SourceMapResult {
     files: finalEntries,
     totalTokens,
     codebaseTokens: undefined, // not available without cache
+    filesTotal,
+    filesShown,
+    filesOmitted,
   };
 }
 
@@ -763,18 +803,26 @@ export function generateSourceMap(options: SourceMapOptions): SourceMapResult {
   const entries = buildEntriesFromCache(db, filePaths, opts);
 
   let finalEntries = entries;
+  let totalTokens = 0;
+  let filesTotal = entries.length;
+  let filesShown = entries.length;
+  let filesOmitted = 0;
+
   if (opts.tokenBudget) {
-    finalEntries = fitToBudget(entries, opts, opts.tokenBudget);
+    const budgetResult = fitToBudget(entries, opts, opts.tokenBudget);
+    finalEntries = budgetResult.entries;
+    totalTokens = budgetResult.totalTokens;
+    filesTotal = budgetResult.filesTotal;
+    filesShown = budgetResult.filesShown;
+    filesOmitted = budgetResult.filesOmitted;
   } else {
     for (const entry of finalEntries) {
       entry.tokenEstimate = estimateFileTokens(entry, opts);
     }
+    totalTokens = finalEntries.reduce((sum, e) => sum + e.tokenEstimate, 0);
   }
 
-  const totalTokens = finalEntries.reduce((sum, e) => sum + e.tokenEstimate, 0);
-  const stats = opts.includeStats || opts.summaryOnly
-    ? computeStats(finalEntries)
-    : null;
+  const stats = opts.includeStats || opts.summaryOnly ? computeStats(entries) : null;
   const codebaseTokens = Math.ceil(db.getTotalCodebaseBytes() / 4);
 
   db.close();
@@ -785,5 +833,8 @@ export function generateSourceMap(options: SourceMapOptions): SourceMapResult {
     files: finalEntries,
     totalTokens,
     codebaseTokens,
+    filesTotal,
+    filesShown,
+    filesOmitted,
   };
 }

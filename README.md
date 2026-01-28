@@ -144,6 +144,8 @@ src/auth.ts [1-200]
 
 The algorithm reduces the largest file first, then the next largest, cycling through until the budget is met or all files are at `outline` level.
 
+If the outline-only file list still exceeds the budget, Codemap truncates the file list and reports how many files were omitted.
+
 ## CLI Reference
 
 ```bash

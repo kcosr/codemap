@@ -428,12 +428,34 @@ export function renderText(
     if (showHeader || result.files.length > 0) {
       lines.push("---");
     }
-    lines.push(`Files: ${result.files.length}`);
+    const filesTotal = result.filesTotal ?? result.files.length;
+    const filesShown = result.filesShown ?? result.files.length;
+    const filesOmitted =
+      result.filesOmitted ?? Math.max(0, filesTotal - filesShown);
+    if (filesOmitted > 0) {
+      lines.push(
+        `Files: ${filesTotal} (showing ${filesShown}, omitted ${filesOmitted} due to budget)`,
+      );
+    } else {
+      lines.push(`Files: ${filesShown}`);
+    }
     let tokenLine = `Estimated tokens: ${result.totalTokens.toLocaleString()}`;
     if (result.codebaseTokens) {
       tokenLine += ` (codebase: ~${result.codebaseTokens.toLocaleString()})`;
     }
     lines.push(tokenLine);
+    if (opts.tokenBudget) {
+      const reducedCount = result.files.filter(
+        (f) => f.detailLevel !== "full",
+      ).length;
+      if (reducedCount > 0) {
+        lines.push(
+          `Detail reduced on ${reducedCount} file${
+            reducedCount === 1 ? "" : "s"
+          } to fit budget.`,
+        );
+      }
+    }
   }
 
   return lines.join("\n");
@@ -445,12 +467,23 @@ export function renderJson(
 ): string {
   const includeStats = opts?.includeStats ?? true;
   const summaryOnly = opts?.summaryOnly ?? false;
+  const filesTotal = result.filesTotal ?? result.files.length;
+  const filesShown = result.filesShown ?? result.files.length;
+  const filesOmitted =
+    result.filesOmitted ?? Math.max(0, filesTotal - filesShown);
+  const reducedCount = result.files.filter(
+    (f) => f.detailLevel !== "full",
+  ).length;
 
   return JSON.stringify(
     {
       stats: includeStats ? result.stats : null,
       total_tokens: includeStats ? result.totalTokens : null,
       codebase_tokens: includeStats ? result.codebaseTokens ?? null : null,
+      files_total: includeStats ? filesTotal : null,
+      files_shown: includeStats ? filesShown : null,
+      files_omitted: includeStats ? filesOmitted : null,
+      detail_reduced_files: includeStats ? reducedCount : null,
       files: summaryOnly
         ? undefined
         : result.files.map((f) => ({
