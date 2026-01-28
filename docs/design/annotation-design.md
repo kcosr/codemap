@@ -175,7 +175,7 @@ Markdown export should be one file per export with deterministic ordering
 
 ## Suggested Tagging Conventions (Generic)
 - `category=command`
-- `category=callback`
+- `category=handler`
 - `category=resource`
 - `category=enum`
 - `domain=users|billing|messaging|storage|reports`

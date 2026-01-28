@@ -29,11 +29,12 @@ import {
 } from "./refs/type-hierarchy.js";
 import { buildAnnotationIndex, renderAnnotationIndexMarkdown } from "./export.js";
 import {
-  TAG_KEY_RE,
   formatTag,
   hasTags,
+  matchesMissingTagKeys,
   matchesTags,
   parseTag,
+  parseTagKey,
   summarizeTags,
 } from "./tags.js";
 
@@ -152,6 +153,16 @@ function parseTagList(input: unknown): TagEntry[] {
   return dedupeTags(values.map((value) => parseTag(value)));
 }
 
+function parseTagKeys(input: unknown): string[] {
+  const values = toArray(input);
+  const keys = new Set<string>();
+  for (const value of values) {
+    const key = parseTagKey(value);
+    keys.add(key);
+  }
+  return [...keys];
+}
+
 function parseKindsArg(input: unknown): SymbolKind[] {
   const values = toArray(input);
   const kinds = new Set<SymbolKind>();
@@ -178,11 +189,8 @@ function parseGroupByTag(value: unknown): string | undefined {
   if (!trimmed.startsWith("tag:")) {
     throw new Error("Invalid --group-by value. Expected tag:<key>.");
   }
-  const key = trimmed.slice(4).trim().toLowerCase();
-  if (!TAG_KEY_RE.test(key)) {
-    throw new Error(`Invalid tag key "${key}" for --group-by.`);
-  }
-  return key;
+  const rawKey = trimmed.slice(4).trim();
+  return parseTagKey(rawKey);
 }
 
 function addTagToMap(map: TagMap | undefined, tag: TagEntry): TagMap {
@@ -844,6 +852,11 @@ const cli = yargs(hideBin(process.argv))
           array: true,
           describe: "Filter by tag (repeatable, key=value, OR semantics)",
         })
+        .option("missing-tag", {
+          type: "string",
+          array: true,
+          describe: "Filter items missing a tag key (repeatable, AND semantics)",
+        })
         .option("kinds", {
           type: "string",
           describe: `Filter symbol kinds (comma-separated). Values: ${SYMBOL_KIND_LIST}`,
@@ -905,13 +918,15 @@ const cli = yargs(hideBin(process.argv))
       const annotatedOnly = argv.annotated === true || annotationsOnly;
       const filterTagsAll = parseTagList(argv["filter-tag"]);
       const filterTagsAny = parseTagList(argv["filter-tag-any"]);
+      const missingTagKeys = parseTagKeys(argv["missing-tag"]);
       const filterKinds = parseKindsArg(argv.kinds);
       const groupByTag = parseGroupByTag(argv["group-by"]);
       const includeAnnotations =
         argv.annotations !== false ||
         annotatedOnly ||
         filterTagsAll.length > 0 ||
-        filterTagsAny.length > 0;
+        filterTagsAny.length > 0 ||
+        missingTagKeys.length > 0;
 
       const opts = {
         repoRoot: repoRoot,
@@ -931,6 +946,7 @@ const cli = yargs(hideBin(process.argv))
         filterKinds: filterKinds.length > 0 ? filterKinds : undefined,
         filterTagsAll: filterTagsAll.length > 0 ? filterTagsAll : undefined,
         filterTagsAny: filterTagsAny.length > 0 ? filterTagsAny : undefined,
+        missingTagKeys: missingTagKeys.length > 0 ? missingTagKeys : undefined,
         groupByTag,
         tokenBudget: argv.budget,
         output,
@@ -1223,6 +1239,11 @@ const cli = yargs(hideBin(process.argv))
           array: true,
           describe: "Filter by tag (repeatable, key=value)",
         })
+        .option("missing-tag", {
+          type: "string",
+          array: true,
+          describe: "Filter items missing a tag key (repeatable, AND semantics)",
+        })
         .option("kinds", {
           type: "string",
           describe: `Filter symbol kinds (comma-separated). Values: ${SYMBOL_KIND_LIST}`,
@@ -1255,6 +1276,7 @@ const cli = yargs(hideBin(process.argv))
         : undefined;
       const scope = argv.scope as "files" | "symbols" | "all";
       const tagFilters = parseTagList(argv.tag);
+      const missingTagKeys = parseTagKeys(argv["missing-tag"]);
       const kindsFilter = parseKindsArg(argv.kinds);
       const kindSet = kindsFilter.length > 0 ? new Set(kindsFilter) : null;
 
@@ -1485,16 +1507,36 @@ const cli = yargs(hideBin(process.argv))
       });
 
       const tagFilteredFiles =
-        tagFilters.length > 0
-          ? fileList.filter((item) =>
-              matchesTags(item.tags, tagFilters, undefined),
-            )
+        tagFilters.length > 0 || missingTagKeys.length > 0
+          ? fileList.filter((item) => {
+              if (tagFilters.length > 0) {
+                if (!matchesTags(item.tags, tagFilters, undefined)) {
+                  return false;
+                }
+              }
+              if (missingTagKeys.length > 0) {
+                if (!matchesMissingTagKeys(item.tags, missingTagKeys)) {
+                  return false;
+                }
+              }
+              return true;
+            })
           : fileList;
       const tagFilteredSymbols =
-        tagFilters.length > 0
-          ? symbolList.filter((item) =>
-              matchesTags(item.tags, tagFilters, undefined),
-            )
+        tagFilters.length > 0 || missingTagKeys.length > 0
+          ? symbolList.filter((item) => {
+              if (tagFilters.length > 0) {
+                if (!matchesTags(item.tags, tagFilters, undefined)) {
+                  return false;
+                }
+              }
+              if (missingTagKeys.length > 0) {
+                if (!matchesMissingTagKeys(item.tags, missingTagKeys)) {
+                  return false;
+                }
+              }
+              return true;
+            })
           : symbolList;
 
       const kindFilteredSymbols = kindSet
@@ -1567,10 +1609,7 @@ const cli = yargs(hideBin(process.argv))
       const repoRoot = argv.dir as string;
       const scope = argv.scope as "files" | "symbols" | "all";
       const filterKey =
-        typeof argv.filter === "string" ? argv.filter.trim().toLowerCase() : undefined;
-      if (filterKey && !TAG_KEY_RE.test(filterKey)) {
-        throw new Error(`Invalid tag key "${filterKey}".`);
-      }
+        typeof argv.filter === "string" ? parseTagKey(argv.filter) : undefined;
 
       const db = openCache(repoRoot);
       const counts = db.listTagCounts({

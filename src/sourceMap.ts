@@ -63,7 +63,12 @@ import {
 } from "./cache/changes.js";
 import { buildSymbolAnnotationKey } from "./cache/annotations.js";
 import { STRUCTURAL_REF_KINDS } from "./cache/references.js";
-import { hasTags, matchesTags, normalizeTagMap } from "./tags.js";
+import {
+  hasTags,
+  matchesMissingTagKeys,
+  matchesTags,
+  normalizeTagMap,
+} from "./tags.js";
 
 const DEFAULT_OPTIONS: Partial<SourceMapOptions> = {
   includeComments: true,
@@ -389,7 +394,11 @@ function buildEntriesFromCache(
     : null;
   const filterTagsAll = opts.filterTagsAll ?? [];
   const filterTagsAny = opts.filterTagsAny ?? [];
-  const useTagFilters = filterTagsAll.length > 0 || filterTagsAny.length > 0;
+  const missingTagKeys = opts.missingTagKeys ?? [];
+  const useTagFilters =
+    filterTagsAll.length > 0 ||
+    filterTagsAny.length > 0 ||
+    missingTagKeys.length > 0;
   const includeTags =
     opts.includeAnnotations || useTagFilters || Boolean(opts.groupByTag);
 
@@ -496,32 +505,42 @@ function buildEntriesFromCache(
         }
       }
 
+      const requiresTaggedForMissing =
+        missingTagKeys.length > 0 && (opts.annotatedOnly || opts.annotationsOnly);
       const isAnnotated = Boolean(annotation) || hasTags(normalizedTags);
       const matchesTagFilter = matchesTags(
         normalizedTags,
         filterTagsAll,
         filterTagsAny,
       );
+      const matchesMissingTagFilter = matchesMissingTagKeys(
+        normalizedTags,
+        missingTagKeys,
+      );
 
+      if (requiresTaggedForMissing && !hasTags(normalizedTags)) {
+        return [];
+      }
       if ((opts.annotatedOnly || opts.annotationsOnly) && !isAnnotated) {
         return [];
       }
-      if (useTagFilters && !matchesTagFilter) {
+      if (useTagFilters && (!matchesTagFilter || !matchesMissingTagFilter)) {
         return [];
       }
 
       return [entry];
     });
-    const fileMatchesTagFilter = matchesTags(
-      fileTags,
-      filterTagsAll,
-      filterTagsAny,
-    );
+    const fileMatchesTagFilter =
+      matchesTags(fileTags, filterTagsAll, filterTagsAny) &&
+      matchesMissingTagKeys(fileTags, missingTagKeys);
     const hasMatchingSymbols = symbols.length > 0;
-    const fileIsAnnotated = Boolean(fileAnnotation) || hasTags(fileTags);
+    const fileHasTags = hasTags(fileTags);
+    const fileIsAnnotated = Boolean(fileAnnotation) || fileHasTags;
+    const requiresTaggedForMissing =
+      missingTagKeys.length > 0 && (opts.annotatedOnly || opts.annotationsOnly);
     const passesAnnotatedFilter =
       !(opts.annotatedOnly || opts.annotationsOnly) ||
-      fileIsAnnotated ||
+      (requiresTaggedForMissing ? fileHasTags : fileIsAnnotated) ||
       hasMatchingSymbols;
     const passesTagFilter = !useTagFilters || fileMatchesTagFilter || hasMatchingSymbols;
 

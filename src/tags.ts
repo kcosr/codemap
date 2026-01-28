@@ -2,6 +2,17 @@ import type { TagEntry, TagMap } from "./types.js";
 
 export const TAG_KEY_RE = /^[a-z][a-z0-9_-]*$/;
 
+export function parseTagKey(rawKey: string): string {
+  const trimmed = rawKey.trim();
+  const key = trimmed.toLowerCase();
+  if (!TAG_KEY_RE.test(key)) {
+    throw new Error(
+      `Invalid tag key "${rawKey}". Expected ${TAG_KEY_RE.source}.`,
+    );
+  }
+  return key;
+}
+
 export function parseTag(input: string): TagEntry {
   const trimmed = input.trim();
   const eq = trimmed.indexOf("=");
@@ -10,12 +21,7 @@ export function parseTag(input: string): TagEntry {
   }
   const rawKey = trimmed.slice(0, eq).trim();
   const rawValue = trimmed.slice(eq + 1).trim();
-  const key = rawKey.toLowerCase();
-  if (!TAG_KEY_RE.test(key)) {
-    throw new Error(
-      `Invalid tag key "${rawKey}". Expected ${TAG_KEY_RE.source}.`,
-    );
-  }
+  const key = parseTagKey(rawKey);
   if (rawValue.length === 0) {
     throw new Error(`Invalid tag value for key "${rawKey}".`);
   }
@@ -88,6 +94,17 @@ export function matchesTags(
   }
 
   return true;
+}
+
+export function matchesMissingTagKeys(
+  tags: TagMap | undefined,
+  missingKeys: string[] | undefined,
+): boolean {
+  const keys = missingKeys ?? [];
+  if (keys.length === 0) return true;
+  const normalized = normalizeTagMap(tags);
+  if (!normalized) return true;
+  return keys.every((key) => !normalized[key] || normalized[key].length === 0);
 }
 
 export function summarizeTags(tags?: TagMap): string {

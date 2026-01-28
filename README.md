@@ -174,6 +174,7 @@ Options:
   --annotations-only     Only show annotations (notes/tags)
   --filter-tag           Filter by tag (repeatable, AND semantics)
   --filter-tag-any       Filter by tag (repeatable, OR semantics)
+  --missing-tag          Filter items missing a tag key (repeatable, AND semantics)
   --kinds                Filter symbol kinds (comma-separated)
   --group-by             Group output by tag:<key>
   --refs                 Include references (incoming). Use --refs=full for read/write refs
@@ -498,6 +499,9 @@ codemap annotations src/db.ts
 # Filter by tag or kind
 codemap annotations --tag category=command --kinds class
 
+# Filter items missing a tag key
+codemap annotations --tag domain=web --missing-tag feature
+
 # Only files or only symbols
 codemap annotations --scope files
 codemap annotations --scope symbols
@@ -530,6 +534,7 @@ codemap --annotations-only
 # Filter by tag (AND/OR)
 codemap --filter-tag category=command --filter-tag domain=users
 codemap --filter-tag-any category=command --filter-tag-any category=handler
+codemap --filter-tag domain=web --missing-tag feature
 
 # Filter by symbol kinds
 codemap --kinds class,enum,interface

@@ -196,6 +196,7 @@ export type SourceMapOptions = {
   filterKinds?: SymbolKind[];
   filterTagsAll?: TagEntry[];
   filterTagsAny?: TagEntry[];
+  missingTagKeys?: string[];
   groupByTag?: string;
 
   // Budget

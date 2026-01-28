@@ -46,6 +46,10 @@ when tags are used to denote required dimensions (for example, `domain`, `featur
 - Applies per entry scope:
   - File filtering uses file tag maps.
   - Symbol filtering uses symbol tag maps.
+- Map-only: when `--missing-tag` is combined with `--annotated`, only entries that
+  already have tags are returned (untagged items are excluded).
+- `codemap annotations` does not support `--annotated`; `--unannotated` already
+  lists files without tags, so `--missing-tag` is effectively redundant there.
 
 ## Examples
 
