@@ -10,6 +10,8 @@
 
 ### Fixed
 
+- Enforced --budget by truncating outline-only file lists and reporting omitted counts. ([#10](https://github.com/kcosr/codemap/pull/10))
+
 ### Removed
 
 ## [0.1.4] - 2026-01-22
