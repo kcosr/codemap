@@ -161,6 +161,9 @@ export type SourceMapResult = {
   files: FileEntry[];
   totalTokens: number;
   codebaseTokens?: number;
+  filesTotal?: number;
+  filesShown?: number;
+  filesOmitted?: number;
 };
 
 export type SourceMapOptions = {
