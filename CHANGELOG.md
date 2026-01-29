@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Breaking Changes
+- Default behavior now uses the existing cache without refreshing (auto-refresh only when cache is empty); use `--refresh` or `codemap index` to update. ([#11](https://github.com/kcosr/codemap/pull/11))
 
 ### Added
 
