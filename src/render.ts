@@ -9,6 +9,7 @@ import type {
   ReferenceList,
   ReferenceItem,
 } from "./types.js";
+import { hasTags, normalizeTagMap, summarizeTags } from "./tags.js";
 
 const GROUP_ORDER: SymbolKind[] = [
   "namespace",
@@ -165,6 +166,9 @@ function renderSymbol(
 
   if (opts.includeAnnotations && sym.annotation) {
     lines.push(`${indent}  [note: ${sym.annotation}]`);
+  }
+  if (opts.includeAnnotations && hasTags(sym.tags)) {
+    lines.push(`${indent}  [tags: ${summarizeTags(sym.tags)}]`);
   }
 
   if (level === "full" || level === "standard") {
@@ -339,6 +343,28 @@ export function renderFileEntry(
   if (opts.includeAnnotations && file.annotation) {
     lines.push(`  [note: ${file.annotation}]`);
   }
+  if (opts.includeAnnotations && hasTags(file.tags)) {
+    lines.push(`  [tags: ${summarizeTags(file.tags)}]`);
+  }
+
+  if (opts.annotationsOnly) {
+    if (file.symbols.length > 0) {
+      lines.push("  symbol annotations:");
+      for (const sym of file.symbols) {
+        const label = sym.parentName
+          ? `${sym.parentName}.${sym.name}`
+          : sym.name;
+        lines.push(`    - ${sym.kind} ${label}`);
+        if (opts.includeAnnotations && sym.annotation) {
+          lines.push(`      [note: ${sym.annotation}]`);
+        }
+        if (opts.includeAnnotations && hasTags(sym.tags)) {
+          lines.push(`      [tags: ${summarizeTags(sym.tags)}]`);
+        }
+      }
+    }
+    return lines.join("\n");
+  }
 
   if (file.symbols.length > 0) {
     const organized = organizeSymbols(file.symbols);
@@ -382,6 +408,40 @@ export function renderFileEntry(
   return lines.join("\n");
 }
 
+type TagGroup = {
+  label: string;
+  files: FileEntry[];
+};
+
+function groupFilesByTag(files: FileEntry[], tagKey: string): TagGroup[] {
+  const groups = new Map<string, FileEntry[]>();
+  const untagged = "(untagged)";
+
+  for (const file of files) {
+    const tags = normalizeTagMap(file.tags);
+    const values = tags?.[tagKey];
+    if (values && values.length > 0) {
+      for (const value of values) {
+        const list = groups.get(value) ?? [];
+        list.push(file);
+        groups.set(value, list);
+      }
+    } else {
+      const list = groups.get(untagged) ?? [];
+      list.push(file);
+      groups.set(untagged, list);
+    }
+  }
+
+  const keys = Array.from(groups.keys()).sort((a, b) => {
+    if (a === untagged) return 1;
+    if (b === untagged) return -1;
+    return a.localeCompare(b);
+  });
+
+  return keys.map((label) => ({ label, files: groups.get(label) ?? [] }));
+}
+
 export function renderText(
   result: SourceMapResult,
   opts: SourceMapOptions,
@@ -418,9 +478,21 @@ export function renderText(
   }
 
   if (!summaryOnly) {
-    for (const file of result.files) {
-      lines.push(renderFileEntry(file, opts));
-      lines.push("");
+    if (opts.groupByTag) {
+      const groups = groupFilesByTag(result.files, opts.groupByTag);
+      for (const group of groups) {
+        lines.push(`## ${opts.groupByTag}=${group.label}`);
+        lines.push("");
+        for (const file of group.files) {
+          lines.push(renderFileEntry(file, opts));
+          lines.push("");
+        }
+      }
+    } else {
+      for (const file of result.files) {
+        lines.push(renderFileEntry(file, opts));
+        lines.push("");
+      }
     }
   }
 
@@ -463,10 +535,15 @@ export function renderText(
 
 export function renderJson(
   result: SourceMapResult,
-  opts?: Pick<SourceMapOptions, "includeStats" | "summaryOnly">,
+  opts?: Pick<
+    SourceMapOptions,
+    "includeStats" | "summaryOnly" | "includeAnnotations" | "annotationsOnly"
+  >,
 ): string {
   const includeStats = opts?.includeStats ?? true;
   const summaryOnly = opts?.summaryOnly ?? false;
+  const includeAnnotations = opts?.includeAnnotations ?? true;
+  const annotationsOnly = opts?.annotationsOnly ?? false;
   const filesTotal = result.filesTotal ?? result.files.length;
   const filesShown = result.filesShown ?? result.files.length;
   const filesOmitted =
@@ -492,60 +569,83 @@ export function renderJson(
             lines: [f.startLine, f.endLine],
             detail_level: f.detailLevel,
             token_estimate: f.tokenEstimate,
-            symbols: f.symbols.map((s) => ({
-              name: s.name,
-              kind: s.kind,
-              signature: s.signature,
-              lines: [s.startLine, s.endLine],
-              exported: s.exported,
-              is_default: s.isDefault,
-              is_async: s.isAsync,
-              is_static: s.isStatic,
-              is_abstract: s.isAbstract,
-              parent_name: s.parentName ?? null,
-              annotation: s.annotation ?? null,
-              comment: s.comment ?? null,
-              incoming_refs: s.incomingRefs
-                ? {
-                    total: s.incomingRefs.total,
-                    sampled: s.incomingRefs.sampled,
-                    by_kind: s.incomingRefs.byKind,
-                    items: s.incomingRefs.items.map((item) => ({
-                      ref_path: item.refPath,
-                      ref_line: item.refLine,
-                      ref_col: item.refCol ?? null,
-                      symbol_path: item.symbolPath,
-                      symbol_name: item.symbolName,
-                      symbol_kind: item.symbolKind,
-                      symbol_parent: item.symbolParent ?? null,
-                      ref_kind: item.refKind,
-                      module_specifier: item.moduleSpecifier ?? null,
-                    })),
-                  }
-                : null,
-              outgoing_refs: s.outgoingRefs
-                ? {
-                    total: s.outgoingRefs.total,
-                    sampled: s.outgoingRefs.sampled,
-                    by_kind: s.outgoingRefs.byKind,
-                    items: s.outgoingRefs.items.map((item) => ({
-                      ref_path: item.refPath,
-                      ref_line: item.refLine,
-                      ref_col: item.refCol ?? null,
-                      symbol_path: item.symbolPath,
-                      symbol_name: item.symbolName,
-                      symbol_kind: item.symbolKind,
-                      symbol_parent: item.symbolParent ?? null,
-                      ref_kind: item.refKind,
-                      module_specifier: item.moduleSpecifier ?? null,
-                    })),
-                  }
-                : null,
-            })),
-            annotation: f.annotation ?? null,
-            headings: f.headings ?? null,
-            code_blocks: f.codeBlocks ?? null,
-            imports: f.imports,
+            symbols: f.symbols.map((s) => {
+              const tags = includeAnnotations ? normalizeTagMap(s.tags) : undefined;
+              if (annotationsOnly) {
+                const minimal: Record<string, unknown> = {
+                  name: s.name,
+                  kind: s.kind,
+                  parent_name: s.parentName ?? null,
+                  annotation: includeAnnotations ? s.annotation ?? null : null,
+                };
+                if (tags) {
+                  minimal.tags = tags;
+                }
+                return minimal;
+              }
+
+              const full: Record<string, unknown> = {
+                name: s.name,
+                kind: s.kind,
+                signature: s.signature,
+                lines: [s.startLine, s.endLine],
+                exported: s.exported,
+                is_default: s.isDefault,
+                is_async: s.isAsync,
+                is_static: s.isStatic,
+                is_abstract: s.isAbstract,
+                parent_name: s.parentName ?? null,
+                annotation: includeAnnotations ? s.annotation ?? null : null,
+                comment: s.comment ?? null,
+                incoming_refs: s.incomingRefs
+                  ? {
+                      total: s.incomingRefs.total,
+                      sampled: s.incomingRefs.sampled,
+                      by_kind: s.incomingRefs.byKind,
+                      items: s.incomingRefs.items.map((item) => ({
+                        ref_path: item.refPath,
+                        ref_line: item.refLine,
+                        ref_col: item.refCol ?? null,
+                        symbol_path: item.symbolPath,
+                        symbol_name: item.symbolName,
+                        symbol_kind: item.symbolKind,
+                        symbol_parent: item.symbolParent ?? null,
+                        ref_kind: item.refKind,
+                        module_specifier: item.moduleSpecifier ?? null,
+                      })),
+                    }
+                  : null,
+                outgoing_refs: s.outgoingRefs
+                  ? {
+                      total: s.outgoingRefs.total,
+                      sampled: s.outgoingRefs.sampled,
+                      by_kind: s.outgoingRefs.byKind,
+                      items: s.outgoingRefs.items.map((item) => ({
+                        ref_path: item.refPath,
+                        ref_line: item.refLine,
+                        ref_col: item.refCol ?? null,
+                        symbol_path: item.symbolPath,
+                        symbol_name: item.symbolName,
+                        symbol_kind: item.symbolKind,
+                        symbol_parent: item.symbolParent ?? null,
+                        ref_kind: item.refKind,
+                        module_specifier: item.moduleSpecifier ?? null,
+                      })),
+                    }
+                  : null,
+              };
+              if (tags) {
+                full.tags = tags;
+              }
+              return full;
+            }),
+            annotation: includeAnnotations ? f.annotation ?? null : null,
+            ...(includeAnnotations && normalizeTagMap(f.tags)
+              ? { tags: normalizeTagMap(f.tags) }
+              : {}),
+            headings: annotationsOnly ? null : f.headings ?? null,
+            code_blocks: annotationsOnly ? null : f.codeBlocks ?? null,
+            imports: annotationsOnly ? [] : f.imports,
           })),
     },
     null,

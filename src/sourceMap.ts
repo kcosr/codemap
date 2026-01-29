@@ -8,9 +8,11 @@ import type {
   FileEntry,
   DetailLevel,
   SymbolEntry,
+  SymbolKind,
   MarkdownHeading,
   MarkdownCodeBlock,
   ResolvedImport,
+  TagMap,
 } from "./types.js";
 import { discoverFiles } from "./fileDiscovery.js";
 import {
@@ -61,6 +63,12 @@ import {
 } from "./cache/changes.js";
 import { buildSymbolAnnotationKey } from "./cache/annotations.js";
 import { STRUCTURAL_REF_KINDS } from "./cache/references.js";
+import {
+  hasTags,
+  matchesMissingTagKeys,
+  matchesTags,
+  normalizeTagMap,
+} from "./tags.js";
 
 const DEFAULT_OPTIONS: Partial<SourceMapOptions> = {
   includeComments: true,
@@ -70,6 +78,9 @@ const DEFAULT_OPTIONS: Partial<SourceMapOptions> = {
   includeStats: true,
   includeAnnotations: true,
   exportedOnly: false,
+  refresh: true,
+  annotatedOnly: false,
+  annotationsOnly: false,
   output: "text",
   summaryOnly: false,
   useCache: true,
@@ -378,6 +389,18 @@ function buildEntriesFromCache(
   opts: SourceMapOptions,
 ): FileEntry[] {
   const entries: FileEntry[] = [];
+  const filterKinds = opts.filterKinds
+    ? new Set(opts.filterKinds)
+    : null;
+  const filterTagsAll = opts.filterTagsAll ?? [];
+  const filterTagsAny = opts.filterTagsAny ?? [];
+  const missingTagKeys = opts.missingTagKeys ?? [];
+  const useTagFilters =
+    filterTagsAll.length > 0 ||
+    filterTagsAny.length > 0 ||
+    missingTagKeys.length > 0;
+  const includeTags =
+    opts.includeAnnotations || useTagFilters || Boolean(opts.groupByTag);
 
   for (const relPath of filePaths) {
     const fileRow = db.getFile(relPath);
@@ -386,9 +409,15 @@ function buildEntriesFromCache(
     const fileAnnotation = opts.includeAnnotations
       ? db.getFileAnnotation(relPath) ?? undefined
       : undefined;
+    const fileTags = includeTags
+      ? normalizeTagMap(db.getFileAnnotationTags(relPath))
+      : undefined;
     const symbolAnnotations = opts.includeAnnotations
       ? db.getSymbolAnnotationMap(relPath)
       : new Map<string, string>();
+    const symbolTags = includeTags
+      ? db.getSymbolAnnotationTagsMap(relPath)
+      : new Map<string, TagMap>();
 
     const refsMode = opts.refsMode ?? (opts.includeRefs ? "structural" : undefined);
     const refKinds =
@@ -396,7 +425,13 @@ function buildEntriesFromCache(
     const refsDirection = opts.refsDirection ?? "in";
     const maxRefs = opts.maxRefs;
 
-    const symbols = db.getSymbols(relPath).map((sym) => {
+    const symbols = db.getSymbols(relPath).flatMap((sym) => {
+      if (opts.exportedOnly && sym.exported !== 1) {
+        return [];
+      }
+      if (filterKinds && !filterKinds.has(sym.kind as SymbolKind)) {
+        return [];
+      }
       const key = buildSymbolAnnotationKey(
         sym.name,
         sym.kind,
@@ -413,6 +448,17 @@ function buildEntriesFromCache(
         );
         annotation = symbolAnnotations.get(fallbackKey);
       }
+      let tags = includeTags ? symbolTags.get(key) : undefined;
+      if (!tags && includeTags && sym.signature) {
+        const fallbackKey = buildSymbolAnnotationKey(
+          sym.name,
+          sym.kind,
+          sym.parent_name,
+          "",
+        );
+        tags = symbolTags.get(fallbackKey);
+      }
+      const normalizedTags = includeTags ? normalizeTagMap(tags) : undefined;
       const signature = sym.signature ?? sym.name;
       const entry: SymbolEntry = {
         id: sym.id,
@@ -429,6 +475,7 @@ function buildEntriesFromCache(
         parentName: sym.parent_name ?? undefined,
         comment: sym.jsdoc ?? undefined,
         annotation,
+        tags: normalizedTags,
       };
 
       if (opts.includeRefs) {
@@ -458,12 +505,48 @@ function buildEntriesFromCache(
         }
       }
 
-      return entry;
-    });
+      const requiresTaggedForMissing =
+        missingTagKeys.length > 0 && (opts.annotatedOnly || opts.annotationsOnly);
+      const isAnnotated = Boolean(annotation) || hasTags(normalizedTags);
+      const matchesTagFilter = matchesTags(
+        normalizedTags,
+        filterTagsAll,
+        filterTagsAny,
+      );
+      const matchesMissingTagFilter = matchesMissingTagKeys(
+        normalizedTags,
+        missingTagKeys,
+      );
 
-    const filteredSymbols = opts.exportedOnly
-      ? symbols.filter((s) => s.exported)
-      : symbols;
+      if (requiresTaggedForMissing && !hasTags(normalizedTags)) {
+        return [];
+      }
+      if ((opts.annotatedOnly || opts.annotationsOnly) && !isAnnotated) {
+        return [];
+      }
+      if (useTagFilters && (!matchesTagFilter || !matchesMissingTagFilter)) {
+        return [];
+      }
+
+      return [entry];
+    });
+    const fileMatchesTagFilter =
+      matchesTags(fileTags, filterTagsAll, filterTagsAny) &&
+      matchesMissingTagKeys(fileTags, missingTagKeys);
+    const hasMatchingSymbols = symbols.length > 0;
+    const fileHasTags = hasTags(fileTags);
+    const fileIsAnnotated = Boolean(fileAnnotation) || fileHasTags;
+    const requiresTaggedForMissing =
+      missingTagKeys.length > 0 && (opts.annotatedOnly || opts.annotationsOnly);
+    const passesAnnotatedFilter =
+      !(opts.annotatedOnly || opts.annotationsOnly) ||
+      (requiresTaggedForMissing ? fileHasTags : fileIsAnnotated) ||
+      hasMatchingSymbols;
+    const passesTagFilter = !useTagFilters || fileMatchesTagFilter || hasMatchingSymbols;
+
+    if (!passesAnnotatedFilter || !passesTagFilter) {
+      continue;
+    }
 
     const headingsRaw = opts.includeHeadings
       ? db.getHeadings(relPath).map((h) => ({
@@ -504,8 +587,9 @@ function buildEntriesFromCache(
       startLine: 1,
       endLine: fileRow.line_count,
       annotation: fileAnnotation,
+      tags: fileTags,
       detailLevel: "full",
-      symbols: filteredSymbols,
+      symbols,
       headings,
       codeBlocks,
       imports,
@@ -662,6 +746,7 @@ function generateSourceMapNoCache(opts: SourceMapOptions): SourceMapResult {
     repoRoot: opts.repoRoot,
     patterns: opts.patterns,
     ignore: opts.ignore,
+    includeIgnored: opts.includeIgnored,
   });
 
   const entries: FileEntry[] = [];
@@ -728,6 +813,7 @@ export function refreshCache(
     repoRoot,
     patterns,
     ignore,
+    includeIgnored: opts.includeIgnored,
   });
 
   const discovered = statDiscoveredFiles(repoRoot, filePaths);
@@ -796,6 +882,56 @@ export function generateSourceMap(options: SourceMapOptions): SourceMapResult {
       opts.includeRefs = false;
     }
     return generateSourceMapNoCache(opts);
+  }
+
+  if (opts.refresh === false) {
+    const { patterns, ignore } = normalizeScopePatterns(opts.patterns, opts.ignore);
+    const db = openCache(opts.repoRoot);
+    const stats = db.getCacheStats();
+    if (stats.files.total === 0) {
+      db.close();
+    } else {
+      const cached = filterCachedByScope(db.getCachedFiles(), patterns, ignore);
+      const filePaths = Array.from(cached.keys()).sort();
+      const entries = buildEntriesFromCache(db, filePaths, opts);
+
+      let finalEntries = entries;
+      let totalTokens = 0;
+      let filesTotal = entries.length;
+      let filesShown = entries.length;
+      let filesOmitted = 0;
+
+      if (opts.tokenBudget) {
+        const budgetResult = fitToBudget(entries, opts, opts.tokenBudget);
+        finalEntries = budgetResult.entries;
+        totalTokens = budgetResult.totalTokens;
+        filesTotal = budgetResult.filesTotal;
+        filesShown = budgetResult.filesShown;
+        filesOmitted = budgetResult.filesOmitted;
+      } else {
+        for (const entry of finalEntries) {
+          entry.tokenEstimate = estimateFileTokens(entry, opts);
+        }
+        totalTokens = finalEntries.reduce((sum, e) => sum + e.tokenEstimate, 0);
+      }
+
+      const scopedStats =
+        opts.includeStats || opts.summaryOnly ? computeStats(entries) : null;
+      const codebaseTokens = Math.ceil(db.getTotalCodebaseBytes() / 4);
+
+      db.close();
+
+      return {
+        repoRoot: opts.repoRoot,
+        stats: scopedStats,
+        files: finalEntries,
+        totalTokens,
+        codebaseTokens,
+        filesTotal,
+        filesShown,
+        filesOmitted,
+      };
+    }
   }
 
   const { db, filePaths } = refreshCache(opts);

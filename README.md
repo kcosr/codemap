@@ -159,6 +159,9 @@ Options:
   -o, --output           Output format: text | json (default: text)
   -b, --budget           Token budget (auto-reduces detail to fit)
   --ignore               Ignore patterns (repeatable)
+  --include-ignored      Include ignored files that match the provided patterns
+  --include-ignored-path Include ignored paths (repeatable, git repos only)
+  --refresh              Refresh the cache before running the command
   --exported-only        Only include exported symbols
   --no-comments          Exclude JSDoc comments
   --no-imports           Exclude import lists
@@ -167,6 +170,13 @@ Options:
   --no-stats             Exclude project statistics header and token summary
   --stats-only           Show summary statistics only (no file entries)
   --no-annotations       Exclude annotations from output
+  --annotated            Only include annotated files and symbols
+  --annotations-only     Only show annotations (notes/tags)
+  --filter-tag           Filter by tag (repeatable, AND semantics)
+  --filter-tag-any       Filter by tag (repeatable, OR semantics)
+  --missing-tag          Filter items missing a tag key (repeatable, AND semantics)
+  --kinds                Filter symbol kinds (comma-separated)
+  --group-by             Group output by tag:<key>
   --refs                 Include references (incoming). Use --refs=full for read/write refs
   --refs-in              Include incoming references
   --refs-out             Include outgoing references
@@ -397,12 +407,13 @@ codemap --no-cache
 
 - First run populates the cache for the full repo or selected patterns.
 - Subsequent runs are incremental unless you pass `--no-cache`.
+- By default, codemap uses the existing cache without refreshing; it will auto-refresh if the cache is empty. Use `--refresh` or `codemap index` to update.
 - Annotations are preserved across cache clears (unless `--all` is used).
 - Add `.codemap/` to your `.gitignore`, or commit just the annotations by running `cache clear` first.
 
 ## Annotations
 
-Annotations attach persistent notes to files or symbols. They survive reindexing and appear in output.
+Annotations attach persistent notes and tags to files or symbols. They survive reindexing and appear in output.
 
 ### File Annotations
 
@@ -413,7 +424,7 @@ codemap annotate src/db.ts "Core database abstraction layer"
 # Update (just run again with new text)
 codemap annotate src/db.ts "Updated description"
 
-# Remove
+# Remove note
 codemap annotate src/db.ts --remove
 ```
 
@@ -431,20 +442,112 @@ codemap annotate src/db.ts:Database:class "Singleton - use getInstance()"
 # Annotate a method (specify parent class)
 codemap annotate src/db.ts:query:method:Database "Throws on connection failure"
 
-# Remove
+# Remove note
 codemap annotate src/db.ts:validateToken:function --remove
 ```
 
 Valid kinds: `function`, `class`, `interface`, `type`, `variable`, `enum`, `enum_member`, `method`, `property`, `constructor`, `getter`, `setter`
 
+### Tags
+
+```bash
+# Add tags alongside a note
+codemap annotate src/db.ts "Core database" --tag category=command --tag domain=users
+
+# Add tags without changing the note
+codemap annotate src/db.ts --tag category=command
+
+# Remove tags
+codemap annotate src/db.ts --remove-tag category=command
+
+# Clear all tags on a target
+codemap annotate src/db.ts --clear-tags
+```
+
+### Bulk Annotation
+
+```bash
+# Annotate files by glob
+codemap annotate --glob "sdk/models/*Command*.ts" --tag category=command
+
+# Preview changes without writing
+codemap annotate --glob "sdk/models/*Command*.ts" --tag category=command --dry-run
+
+# Heuristic tagging (classes ending in *Command)
+codemap annotate --auto command --tag category=command
+```
+
+### Including Ignored Files
+
+```bash
+# Include ignored files that match your patterns
+codemap --include-ignored "nodejs-sdk/models/**"
+
+# Or specify explicit ignored paths without changing patterns
+codemap --include-ignored-path "nodejs-sdk/**" "nodejs-sdk/models/**"
+```
+
 ### Listing Annotations
 
 ```bash
-# List all annotations
+# List all annotations (notes + tags)
 codemap annotations
 
 # Filter by file
 codemap annotations src/db.ts
+
+# Filter by tag or kind
+codemap annotations --tag category=command --kinds class
+
+# Filter items missing a tag key
+codemap annotations --tag domain=web --missing-tag feature
+
+# Only files or only symbols
+codemap annotations --scope files
+codemap annotations --scope symbols
+
+# Coverage and drift
+codemap annotations --summary
+codemap annotations --unannotated
+codemap annotations --orphans
+```
+
+### Tag Discovery
+
+```bash
+# List tags and counts
+codemap tags
+
+# Filter by key
+codemap tags --filter category
+```
+
+### Filtering Map Output
+
+```bash
+# Only annotated items
+codemap --annotated
+
+# Only annotations (notes/tags)
+codemap --annotations-only
+
+# Filter by tag (AND/OR)
+codemap --filter-tag category=command --filter-tag domain=users
+codemap --filter-tag-any category=command --filter-tag-any category=handler
+codemap --filter-tag domain=web --missing-tag feature
+
+# Filter by symbol kinds
+codemap --kinds class,enum,interface
+
+# Group by tag key (text output)
+codemap --group-by tag:category
+```
+
+### Exporting an Index
+
+```bash
+codemap export --format json --output .codemap/index.json
+codemap export --format markdown --output .codemap/index.md
 ```
 
 ### How Annotations Appear
@@ -453,12 +556,14 @@ Text output:
 ```
 src/db.ts [1-250]
   [note: Core database abstraction layer]
+  [tags: category=command, domain=users]
   class:
     15-120: Database
       [note: Singleton - use getInstance()]
+      [tags: category=command]
 ```
 
-JSON output includes `"annotation"` fields on files and symbols.
+JSON output includes `annotation` fields and `tags` when present.
 
 ### Orphaned Annotations
 
@@ -525,6 +630,9 @@ codemap -o json | jq '.files[0]'
   "language": "typescript",
   "lines": [1, 45],
   "annotation": null,
+  "tags": {
+    "category": ["command"]
+  },
   "symbols": [
     {
       "name": "main",
@@ -538,6 +646,8 @@ codemap -o json | jq '.files[0]'
   "imports": ["./config.js", "./server.js"]
 }
 ```
+
+`tags` are included only when present.
 
 ## Programmatic API
 
@@ -589,7 +699,9 @@ import {
   extractFileSymbols,      // Extract symbols from a single TS/JS file
   extractMarkdownStructure, // Extract headings/code blocks from markdown
   discoverFiles,           // Find files matching patterns
-  
+  buildAnnotationIndex,    // Build a compact annotation index
+  renderAnnotationIndexMarkdown, // Render index as markdown
+
   // Utilities
   detectLanguage,          // Detect language from file path
   canExtractSymbols,       // Check if language supports symbol extraction
@@ -604,6 +716,8 @@ import type {
   SymbolEntry,
   SymbolKind,
   DetailLevel,
+  TagEntry,
+  TagMap,
 } from "codemap";
 ```
 

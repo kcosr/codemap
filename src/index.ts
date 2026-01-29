@@ -1,5 +1,6 @@
 export { generateSourceMap } from "./sourceMap.js";
 export { renderText, renderJson } from "./render.js";
+export { buildAnnotationIndex, renderAnnotationIndexMarkdown } from "./export.js";
 
 export { extractFileSymbols } from "./symbols.js";
 export { extractMarkdownStructure } from "./markdown.js";
@@ -51,4 +52,6 @@ export type {
   ReferenceKind,
   ReferenceItem,
   ReferenceList,
+  TagEntry,
+  TagMap,
 } from "./types.js";

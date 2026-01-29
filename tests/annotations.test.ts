@@ -49,6 +49,19 @@ describe("annotations", () => {
       },
       "Greet note",
     );
+    db.addFileAnnotationTags("src/example.ts", [
+      { key: "category", value: "command" },
+    ]);
+    db.addSymbolAnnotationTags(
+      {
+        path: "src/example.ts",
+        symbolName: "greet",
+        symbolKind: "function",
+        parentName: null,
+        signature: symbol?.signature ?? "",
+      },
+      [{ key: "category", value: "command" }],
+    );
     db.close();
 
     const second = generateSourceMap({
@@ -66,7 +79,9 @@ describe("annotations", () => {
     const symbol2 = entry2?.symbols.find((s) => s.name === "greet");
 
     expect(entry2?.annotation).toBe("Core file note");
+    expect(entry2?.tags?.category).toContain("command");
     expect(symbol2?.annotation).toBe("Greet note");
+    expect(symbol2?.tags?.category).toContain("command");
 
     fs.rmSync(dir, { recursive: true, force: true });
   });
@@ -100,6 +115,19 @@ describe("annotations", () => {
       },
       "Symbol note",
     );
+    db.addFileAnnotationTags("src/example.ts", [
+      { key: "category", value: "command" },
+    ]);
+    db.addSymbolAnnotationTags(
+      {
+        path: "src/example.ts",
+        symbolName: "greet",
+        symbolKind: "function",
+        parentName: null,
+        signature: null,
+      },
+      [{ key: "category", value: "command" }],
+    );
     db.close();
 
     // With annotations (default)
@@ -117,7 +145,9 @@ describe("annotations", () => {
 
     const entry1 = withAnnotations.files.find((f) => f.path === "src/example.ts");
     expect(entry1?.annotation).toBe("File note");
+    expect(entry1?.tags?.category).toContain("command");
     expect(entry1?.symbols.find((s) => s.name === "greet")?.annotation).toBe("Symbol note");
+    expect(entry1?.symbols.find((s) => s.name === "greet")?.tags?.category).toContain("command");
 
     // Without annotations
     const withoutAnnotations = generateSourceMap({
@@ -134,7 +164,9 @@ describe("annotations", () => {
 
     const entry2 = withoutAnnotations.files.find((f) => f.path === "src/example.ts");
     expect(entry2?.annotation).toBeUndefined();
+    expect(entry2?.tags).toBeUndefined();
     expect(entry2?.symbols.find((s) => s.name === "greet")?.annotation).toBeUndefined();
+    expect(entry2?.symbols.find((s) => s.name === "greet")?.tags).toBeUndefined();
 
     fs.rmSync(dir, { recursive: true, force: true });
   });
@@ -232,6 +264,19 @@ describe("annotations", () => {
       },
       "Symbol note",
     );
+    db.addFileAnnotationTags("src/example.ts", [
+      { key: "category", value: "command" },
+    ]);
+    db.addSymbolAnnotationTags(
+      {
+        path: "src/example.ts",
+        symbolName: "greet",
+        symbolKind: "function",
+        parentName: null,
+        signature: null,
+      },
+      [{ key: "category", value: "command" }],
+    );
 
     // Verify annotations exist
     expect(db.getFileAnnotation("src/example.ts")).toBe("File note");
@@ -244,6 +289,11 @@ describe("annotations", () => {
         signature: null,
       }),
     ).toBe("Symbol note");
+    expect(db.getFileAnnotationTags("src/example.ts").category).toContain("command");
+    expect(
+      db.getSymbolAnnotationTagsMap("src/example.ts")
+        .get("greet\u0000function\u0000\u0000")?.category,
+    ).toContain("command");
 
     // Clear files - annotations should remain
     db.clearFiles();
@@ -261,6 +311,7 @@ describe("annotations", () => {
     // Clear annotations - now they should be gone
     db.clearAnnotations();
     expect(db.getFileAnnotation("src/example.ts")).toBeNull();
+    expect(db.getFileAnnotationTags("src/example.ts")).toEqual({});
     expect(
       db.getSymbolAnnotation({
         path: "src/example.ts",
@@ -270,8 +321,118 @@ describe("annotations", () => {
         signature: null,
       }),
     ).toBeNull();
+    expect(
+      db.getSymbolAnnotationTagsMap("src/example.ts").get("greet\u0000function\u0000\u0000"),
+    ).toBeUndefined();
 
     db.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("filters by missing tag keys with annotatedOnly behavior", () => {
+    const dir = createTempProject();
+
+    fs.writeFileSync(
+      path.join(dir, "src", "example.ts"),
+      [
+        "export function greet(name: string): string {",
+        "  return \"hi \" + name;",
+        "}",
+        "",
+        "export function ping(): string {",
+        "  return \"pong\";",
+        "}",
+        "",
+        "export function noop(): void {}",
+        "",
+      ].join("\n"),
+    );
+
+    const initial = generateSourceMap({
+      repoRoot: dir,
+      includeComments: true,
+      includeImports: true,
+      includeHeadings: true,
+      includeCodeBlocks: true,
+      includeStats: false,
+      includeAnnotations: true,
+      exportedOnly: false,
+      output: "text",
+    });
+
+    const entry = initial.files.find((f) => f.path === "src/example.ts");
+    const greet = entry?.symbols.find((s) => s.name === "greet");
+    const ping = entry?.symbols.find((s) => s.name === "ping");
+    const noop = entry?.symbols.find((s) => s.name === "noop");
+
+    expect(greet).toBeDefined();
+    expect(ping).toBeDefined();
+    expect(noop).toBeDefined();
+
+    const db = openCache(dir);
+    db.addSymbolAnnotationTags(
+      {
+        path: "src/example.ts",
+        symbolName: "greet",
+        symbolKind: "function",
+        parentName: null,
+        signature: greet?.signature ?? "",
+      },
+      [{ key: "feature", value: "auth" }],
+    );
+    db.addSymbolAnnotationTags(
+      {
+        path: "src/example.ts",
+        symbolName: "ping",
+        symbolKind: "function",
+        parentName: null,
+        signature: ping?.signature ?? "",
+      },
+      [{ key: "category", value: "handler" }],
+    );
+    db.close();
+
+    const missingTag = generateSourceMap({
+      repoRoot: dir,
+      includeComments: true,
+      includeImports: true,
+      includeHeadings: true,
+      includeCodeBlocks: true,
+      includeStats: false,
+      includeAnnotations: true,
+      exportedOnly: false,
+      output: "text",
+      missingTagKeys: ["feature"],
+    });
+
+    const missingNames =
+      missingTag.files
+        .find((f) => f.path === "src/example.ts")
+        ?.symbols.map((s) => s.name)
+        .sort() ?? [];
+    expect(missingNames).toEqual(["noop", "ping"]);
+
+    const missingAnnotated = generateSourceMap({
+      repoRoot: dir,
+      includeComments: true,
+      includeImports: true,
+      includeHeadings: true,
+      includeCodeBlocks: true,
+      includeStats: false,
+      includeAnnotations: true,
+      exportedOnly: false,
+      output: "text",
+      annotatedOnly: true,
+      missingTagKeys: ["feature"],
+    });
+
+    const missingAnnotatedNames =
+      missingAnnotated.files
+        .find((f) => f.path === "src/example.ts")
+        ?.symbols.map((s) => s.name)
+        .sort() ?? [];
+    expect(missingAnnotatedNames).toEqual(["ping"]);
+
     fs.rmSync(dir, { recursive: true, force: true });
   });
 });

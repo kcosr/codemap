@@ -7,14 +7,15 @@ export type DiscoveryOptions = {
   repoRoot: string;
   patterns?: string[];
   ignore?: string[];
+  includeIgnored?: string[];
 };
 
 const MM_OPTS = { dot: true } as const;
 
 export function discoverFiles(opts: DiscoveryOptions): string[] {
-  const { repoRoot, patterns = [], ignore = [] } = opts;
+  const { repoRoot, patterns = [], ignore = [], includeIgnored = [] } = opts;
 
-  let files = discoverAllFiles(repoRoot).map(normalizeRepoPath);
+  let files = discoverAllFiles(repoRoot, includeIgnored).map(normalizeRepoPath);
 
   if (patterns.length > 0) {
     files = files.filter((f) =>
@@ -35,7 +36,7 @@ function normalizeRepoPath(filePath: string): string {
   return filePath.split(path.sep).join("/");
 }
 
-function discoverAllFiles(repoRoot: string): string[] {
+function discoverAllFiles(repoRoot: string, includeIgnored: string[]): string[] {
   try {
     execFileSync("git", ["-C", repoRoot, "rev-parse", "--is-inside-work-tree"], {
       stdio: "ignore",
@@ -45,7 +46,39 @@ function discoverAllFiles(repoRoot: string): string[] {
       ["-C", repoRoot, "ls-files", "-z", "-co", "--exclude-standard"],
       { encoding: "buffer", stdio: ["ignore", "pipe", "ignore"] },
     );
-    return out.toString("utf-8").split("\0").filter(Boolean);
+    const files = out.toString("utf-8").split("\0").filter(Boolean);
+    if (includeIgnored.length === 0) {
+      return files;
+    }
+    try {
+      const includeAllIgnored = includeIgnored.some(
+        (pattern) => pattern === "*" || pattern === "**/*" || pattern === ".",
+      );
+      const ignoredArgs = [
+        "-C",
+        repoRoot,
+        "ls-files",
+        "-z",
+        "-co",
+        "--exclude-standard",
+        "--ignored",
+      ];
+      if (!includeAllIgnored) {
+        ignoredArgs.push("--", ...includeIgnored);
+      }
+      const ignoredOut = execFileSync(
+        "git",
+        ignoredArgs,
+        { encoding: "buffer", stdio: ["ignore", "pipe", "ignore"] },
+      );
+      const ignored = ignoredOut
+        .toString("utf-8")
+        .split("\0")
+        .filter(Boolean);
+      return Array.from(new Set([...files, ...ignored]));
+    } catch {
+      return files;
+    }
   } catch {
     return walkDirectory(repoRoot, repoRoot);
   }
